@@ -1,0 +1,1230 @@
+---
+title: "robustness"
+output: html_document
+---
+
+```{r datasets}
+#1. hearing as mental 
+# select relevant columns
+dat1 <- mydata %>% 
+  dplyr::select(country, hunger, hearing, brains, knowledge, love, 
+                desire, religiosity.s, condition, subject) %>%
+  mutate(mind = knowledge+love+desire+hearing,
+         body = hearing+brains) %>%
+  pivot_longer(cols = mind:body, names_to = 'state', values_to = 'resp') %>%
+  mutate(cat = ifelse(state == 'body', -1/2, 1/2),
+         con = ifelse(condition == "Secular", -1/2, 1/2),
+         rel = religiosity.s,
+         group = as.numeric(as.factor(paste(condition,cat))),
+         religiosity.s = NULL,
+         site = as.numeric(as.factor(country)),
+         total = ifelse(state == "body", 2, 4)) %>%
+  dplyr::select(country,subject,cat,con,rel,group,site,resp,total) %>%
+  arrange(subject)
+
+#2. manipulation check failures excluded 
+dat2 <- mydata %>% 
+  dplyr::select(country, hunger, hearing, brains, knowledge, love, 
+                desire, religiosity.s, condition, subject, check_condition) %>%
+  mutate(mind = knowledge+love+desire,
+         body = hunger+hearing+brains) %>%
+  pivot_longer(cols = mind:body, names_to = 'state', values_to = 'resp') %>%
+  mutate(cat = ifelse(state == 'body', -1/2, 1/2),
+         con = ifelse(condition == "Secular", -1/2, 1/2),
+         rel = religiosity.s,
+         group = as.numeric(as.factor(paste(condition,cat))),
+         religiosity.s = NULL,
+         site = as.numeric(as.factor(country))) %>%
+  dplyr::select(country,subject,cat,con,rel,group,site,resp, check_condition) %>%
+  arrange(subject) %>%
+  filter(check_condition == 1)
+
+#3. covariate education and age
+dat3 <- mydata %>% 
+  dplyr::select(country, hunger, hearing, brains, knowledge, love, 
+                desire, religiosity.s, condition, subject, Education, Age) %>%
+  mutate(mind = knowledge+love+desire,
+         body = hunger+hearing+brains) %>%
+  pivot_longer(cols = mind:body, names_to = 'state', values_to = 'resp') %>%
+  mutate(cat = ifelse(state == 'body', -1/2, 1/2),
+         con = ifelse(condition == "Secular", -1/2, 1/2),
+         rel = religiosity.s,
+         group = as.numeric(as.factor(paste(condition,cat))),
+         religiosity.s = NULL,
+         site = as.numeric(as.factor(country)), 
+         education = scale(Education, center = T, scale = T),
+         age = scale(Age, center = T, scale = F)/10) %>%
+  dplyr::select(country,subject,cat,con,rel,group,site,resp,education,age) %>%
+  filter(!is.na(age)) %>%
+  arrange(subject)
+
+#4. excluding Lithuania (as preregistered)
+dat4 <- dat %>%
+  filter(country != "Lithuania") %>%
+  mutate(site = as.numeric(as.factor(country)))
+         
+ #5. cauchy prior (as preregistered)
+dat5 <- dat
+```
+
+
+```{r r1-models}
+b5u_1 <- 
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel + cat:con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5u_1")
+b5c_1 <- 
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5c_1")
+b4u_1 <-
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con + cat:rel | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4u_1")
+b4c_1 <-
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4c_1")
+b3u_1 <-
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat + rel + con + 
+        (1 + cat + rel + con | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3u_1")
+b3c_1 <-
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat + rel + con + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3c_1")
+b2u_1 <-
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat + rel + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2u_1")
+b2c_1 <-
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat + rel + 
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2c_1")
+b1u_1 <-
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat +
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1u_1")
+b1c_1 <-
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + cat + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1c_1")
+b0_1 <-
+  brm(data = dat1, family = binomial,
+      resp | trials(total) ~ 1 + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b0_1")
+models_1 <- list(b5u_1,b5c_1,
+                 b4u_1,b4c_1,
+                 b3u_1,b3c_1,
+                 b2u_1,b2c_1,
+                 b1u_1,b1c_1,
+                 b0_1)
+```
+
+```{r bridge-r1, cache=TRUE, results='hide', message=FALSE, eval=sample}
+# use bridgesampling to get the logml and Bayes factors 
+bridge5_1 <- bridge_sampler(b5u_1)
+bridge4_1 <- bridge_sampler(b4u_1)
+bridge3_1 <- bridge_sampler(b3u_1)
+bridge2_1 <- bridge_sampler(b2u_1)
+bridge1_1 <- bridge_sampler(b1u_1)
+bridge5c_1 <- bridge_sampler(b5c_1)
+bridge4c_1 <- bridge_sampler(b4c_1)
+bridge3c_1 <- bridge_sampler(b3c_1)
+bridge2c_1 <- bridge_sampler(b2c_1)
+bridge1c_1 <- bridge_sampler(b1c_1)
+bridge0_1 <- bridge_sampler(b0_1)
+#save bridgesampling objects, so they can be reloaded
+bridges_1 <- list(b0=bridge0_1, 
+                   b1c=bridge1c_1, b1u=bridge1_1,
+                   b2c=bridge2c_1, b2u=bridge2_1,
+                   b3c=bridge3c_1, b3u=bridge3_1,
+                   b4c=bridge4c_1, b4u=bridge4_1,
+                   b5c=bridge5c_1, b5u=bridge5_1)
+saveRDS(bridges_1, file = "models/saved_models/bridges_r1.rds")
+```
+
+
+```{r r2-models}
+b5u_2 <- 
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel + cat:con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5u_2")
+b5c_2 <- 
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5c_2")
+b4u_2 <-
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con + cat:rel | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4u_2")
+b4c_2 <-
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4c_2")
+b3u_2 <-
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + 
+        (1 + cat + rel + con | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3u_2")
+b3c_2 <-
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3c_2")
+b2u_2 <-
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2u_2")
+b2c_2 <-
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + 
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2c_2")
+b1u_2 <-
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat +
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1u_2")
+b1c_2 <-
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + cat + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1c_2")
+b0_2 <-
+  brm(data = dat2, family = binomial,
+      resp | trials(3) ~ 1 + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b0_2")
+models_2 <- list(b5u_2,b5c_2,
+                 b4u_2,b4c_2,
+                 b3u_2,b3c_2,
+                 b2u_2,b2c_2,
+                 b1u_2,b1c_2,
+                 b0_2)
+```
+
+```{r bridge-r2, cache=TRUE, results='hide', message=FALSE, eval=sample}
+# use bridgesampling to get the logml and Bayes factors 
+bridge5_2 <- bridge_sampler(b5u_2)
+bridge4_2 <- bridge_sampler(b4u_2)
+bridge3_2 <- bridge_sampler(b3u_2)
+bridge2_2 <- bridge_sampler(b2u_2)
+bridge1_2 <- bridge_sampler(b1u_2)
+bridge5c_2 <- bridge_sampler(b5c_2)
+bridge4c_2 <- bridge_sampler(b4c_2)
+bridge3c_2 <- bridge_sampler(b3c_2)
+bridge2c_2 <- bridge_sampler(b2c_2)
+bridge1c_2 <- bridge_sampler(b1c_2)
+bridge0_2 <- bridge_sampler(b0_2)
+#save bridgesampling objects, so they can be reloaded
+bridges_2 <- list(b0=bridge0_2, 
+                   b1c=bridge1c_2, b1u=bridge1_2,
+                   b2c=bridge2c_2, b2u=bridge2_2,
+                   b3c=bridge3c_2, b3u=bridge3_2,
+                   b4c=bridge4c_2, b4u=bridge4_2,
+                   b5c=bridge5c_2, b5u=bridge5_2)
+saveRDS(bridges_2, file = "models/saved_models/bridges_r2.rds")
+```
+
+
+```{r r3-models}
+b5u_3 <- 
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con + education + age +
+        (1 + cat + rel + con + cat:rel + cat:con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "education"),
+                prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5u_3")
+b5c_3 <- 
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con + education + age + 
+        (1 + cat + rel + con + cat:rel| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "education"),
+                prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5c_3")
+b4u_3 <-
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + education + age +
+        (1 + cat + rel + con + cat:rel | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "education"),
+                prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4u_3")
+b4c_3 <-
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + education + age +
+        (1 + cat + rel + con| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "education"),
+                prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4c_3")
+b3u_3 <-
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + education + age + 
+        (1 + cat + rel + con | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 0.5), class = b, coef = "education"),
+        prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3u_3")
+b3c_3 <-
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + education + age +
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 0.5), class = b, coef = "education"),
+        prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3c_3")
+b2u_3 <-
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + education + age + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 0.5), class = b, coef = "education"),
+        prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2u_3")
+b2c_3 <-
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + education + age +
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 0.5), class = b, coef = "education"),
+        prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2c_3")
+b1u_3 <-
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + education + age + 
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 0.5), class = b, coef = "education"),
+        prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1u_3")
+b1c_3 <-
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + cat + education + age + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 0.5), class = b, coef = "education"),
+        prior(normal(0, 0.5), class = b, coef = "age"),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1c_3")
+b0_3 <-
+  brm(data = dat3, family = binomial,
+      resp | trials(3) ~ 1 + education + age + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 0.5), class = b, coef = "education"),
+        prior(normal(0, 0.5), class = b, coef = "age"),
+        prior(normal(0, 1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b0_3")
+models_3 <- list(b5u_3,b5c_3,
+                 b4u_3,b4c_3,
+                 b3u_3,b3c_3,
+                 b2u_3,b2c_3,
+                 b1u_3,b1c_3,
+                 b0_3)
+```
+
+```{r bridge-r3, cache=TRUE, results='hide', message=FALSE, eval=sample}
+# use bridgesampling to get the logml and Bayes factors 
+bridge5_3 <- bridge_sampler(b5u_3)
+bridge4_3 <- bridge_sampler(b4u_3)
+bridge3_3 <- bridge_sampler(b3u_3)
+bridge2_3 <- bridge_sampler(b2u_3)
+bridge1_3 <- bridge_sampler(b1u_3)
+bridge5c_3 <- bridge_sampler(b5c_3)
+bridge4c_3 <- bridge_sampler(b4c_3)
+bridge3c_3 <- bridge_sampler(b3c_3)
+bridge2c_3 <- bridge_sampler(b2c_3)
+bridge1c_3 <- bridge_sampler(b1c_3)
+bridge0_3 <- bridge_sampler(b0_3)
+#save bridgesampling objects, so they can be reloaded
+bridges_3 <- list(b0=bridge0_3, 
+                   b1c=bridge1c_3, b1u=bridge1_3,
+                   b2c=bridge2c_3, b2u=bridge2_3,
+                   b3c=bridge3c_3, b3u=bridge3_3,
+                   b4c=bridge4c_3, b4u=bridge4_3,
+                   b5c=bridge5c_3, b5u=bridge5_3)
+saveRDS(bridges_3, file = "models/saved_models/bridges_r3.rds")
+```
+
+```{r r4-models}
+b5u_4 <- 
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel + cat:con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5u_4")
+b5c_4 <- 
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5c_4")
+b4u_4 <-
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con + cat:rel | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4u_4")
+b4c_4 <-
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4c_4")
+b3u_4 <-
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + 
+        (1 + cat + rel + con | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3u_4")
+b3c_4 <-
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3c_4")
+b2u_4 <-
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2u_4")
+b2c_4 <-
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + 
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2c_4")
+b1u_4 <-
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat +
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1u_4")
+b1c_4 <-
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + cat + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1c_4")
+b0_4 <-
+  brm(data = dat4, family = binomial,
+      resp | trials(3) ~ 1 + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b0_4")
+models_4 <- list(b5u_4,b5c_4,
+                 b4u_4,b4c_4,
+                 b3u_4,b3c_4,
+                 b2u_4,b2c_4,
+                 b1u_4,b1c_4,
+                 b0_4)
+```
+
+```{r bridge-r4, cache=TRUE, results='hide', message=FALSE, eval=sample}
+# use bridgesampling to get the logml and Bayes factors 
+bridge5_4 <- bridge_sampler(b5u_4)
+bridge4_4 <- bridge_sampler(b4u_4)
+bridge3_4 <- bridge_sampler(b3u_4)
+bridge2_4 <- bridge_sampler(b2u_4)
+bridge1_4 <- bridge_sampler(b1u_4)
+bridge5c_4 <- bridge_sampler(b5c_4)
+bridge4c_4 <- bridge_sampler(b4c_4)
+bridge3c_4 <- bridge_sampler(b3c_4)
+bridge2c_4 <- bridge_sampler(b2c_4)
+bridge1c_4 <- bridge_sampler(b1c_4)
+bridge0_4 <- bridge_sampler(b0_4)
+#save bridgesampling objects, so they can be reloaded
+bridges_4 <- list(b0=bridge0_4, 
+                   b1c=bridge1c_4, b1u=bridge1_4,
+                   b2c=bridge2c_4, b2u=bridge2_4,
+                   b3c=bridge3c_4, b3u=bridge3_4,
+                   b4c=bridge4c_4, b4u=bridge4_4,
+                   b5c=bridge5c_4, b5u=bridge5_4)
+saveRDS(bridges_4, file = "models/saved_models/bridges_r4.rds")
+```
+
+
+```{r r5-models}
+b5u_5 <- 
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel + cat:con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "rel", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "con", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat:rel", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat:con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5u_5")
+b5c_5 <- 
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "rel", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "con", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5c_5")
+b4u_5 <-
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con + cat:rel | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "rel", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "con", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4u_5")
+b4c_5 <-
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "rel", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4c_5")
+b3u_5 <-
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + 
+        (1 + cat + rel + con | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "rel", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3u_5")
+b3c_5 <-
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3c_5")
+b2u_5 <-
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2u_5")
+b2c_5 <-
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + 
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2c_5")
+b1u_5 <-
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat +
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site"),
+                prior(cauchy(0,2), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1u_5")
+b1c_5 <-
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + cat + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(cauchy(0,2), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1c_5")
+b0_5 <-
+  brm(data = dat5, family = binomial,
+      resp | trials(3) ~ 1 + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b0_5")
+models_5 <- list(b5u_5,b5c_5,
+                 b4u_5,b4c_5,
+                 b3u_5,b3c_5,
+                 b2u_5,b2c_5,
+                 b1u_5,b1c_5,
+                 b0_5)
+```
+
+```{r bridge-r5, cache=TRUE, results='hide', message=FALSE, eval=sample}
+# use bridgesampling to get the logml and Bayes factors 
+bridge5_5 <- bridge_sampler(b5u_5)
+bridge4_5 <- bridge_sampler(b4u_5)
+bridge3_5 <- bridge_sampler(b3u_5)
+bridge2_5 <- bridge_sampler(b2u_5)
+bridge1_5 <- bridge_sampler(b1u_5)
+bridge5c_5 <- bridge_sampler(b5c_5)
+bridge4c_5 <- bridge_sampler(b4c_5)
+bridge3c_5 <- bridge_sampler(b3c_5)
+bridge2c_5 <- bridge_sampler(b2c_5)
+bridge1c_5 <- bridge_sampler(b1c_5)
+bridge0_5 <- bridge_sampler(b0_5)
+#save bridgesampling objects, so they can be reloaded
+bridges_5 <- list(b0=bridge0_5, 
+                   b1c=bridge1c_5, b1u=bridge1_5,
+                   b2c=bridge2c_5, b2u=bridge2_5,
+                   b3c=bridge3c_5, b3u=bridge3_5,
+                   b4c=bridge4c_5, b4u=bridge4_5,
+                   b5c=bridge5c_5, b5u=bridge5_5)
+saveRDS(bridges_5, file = "models/saved_models/bridges_r5.rds")
+```
+
+```{r load-bridges, eval=(!sample)}
+bridges_1 <- readRDS(file = "models/saved_models/bridges_r1.rds")
+bridges_2 <- readRDS(file = "models/saved_models/bridges_r2.rds")
+bridges_3 <- readRDS(file = "models/saved_models/bridges_r3.rds")
+bridges_4 <- readRDS(file = "models/saved_models/bridges_r4.rds")
+bridges_5 <- readRDS(file = "models/saved_models/bridges_r5.rds")
+```
+
+
+```{r function-table}
+summ <- function(bridgelist, modellist, I){
+  #estimates 
+  vars <- c("b_cat","b_rel","b_con","b_cat:rel","b_cat:con")
+  sds <- posterior_summary(modellist[[1]], robust=TRUE, variable = vars)[,c(1,3,4)]
+  estimates <- apply(sds,1,writeCI)
+  #BFs
+  bfs1 <- getBFs(bridge0 = bridgelist$b0$logml,
+                 bridge1 = bridgelist$b1c$logml,
+               bridge2 = bridgelist$b1u$logml, 
+               m1 = modellist[[10]], m2 = modellist[[9]], 
+               param = "cat", I = I)
+  bfs2 <- getBFs(bridge0 = bridgelist$b1u$logml,
+                 bridge1 = bridgelist$b2c$logml,
+                 bridge2 = bridgelist$b2u$logml, 
+                 m1 = modellist[[8]], m2 = modellist[[7]], 
+                 param = "rel", I = I)
+  bfs3 <- getBFs(bridge0 = bridgelist$b2u$logml,
+                 bridge1 = bridgelist$b3c$logml,
+                 bridge2 = bridgelist$b3u$logml, 
+                 m1 = modellist[[6]], m2 = modellist[[5]], 
+                 param = "con", I = I)
+  bfs4 <- getBFs(bridge0 = bridgelist$b3u$logml,
+                 bridge1 = bridgelist$b4c$logml,
+                 bridge2 = bridgelist$b4u$logml, 
+                 m1 = modellist[[4]], m2 = modellist[[3]], 
+                 param = "cat:rel", I = I)
+  bfs5 <- getBFs(bridge0 = bridgelist$b4u$logml,
+                 bridge1 = bridgelist$b5c$logml,
+                 bridge2 = bridgelist$b5u$logml, 
+                 m1 = modellist[[2]], m2 = modellist[[1]], 
+                 param = "cat:con", I = I)
+  bf1 <- c(printBFab(bfs1[2],bfs1[1]),printBFab(bfs1[3],bfs1[2]))
+  bf2 <- c(printBFab(bfs2[2],bfs2[1]),printBFab(bfs2[3],bfs2[2]))
+  bf3 <- c(printBFab(bfs3[2],bfs3[1]),printBFab(bfs3[3],bfs3[2]))
+  bf4 <- c(printBFab(bfs4[2],bfs4[1]),printBFab(bfs4[3],bfs4[2]))
+  bf5 <- c(printBFab(bfs5[2],bfs5[1]),printBFab(bfs5[3],bfs5[2]))
+  
+  models <- c("$\\calM_0$", "$\\calM_1$", "$\\calM_+$", "$\\calM_u$")
+  pref <- c(models[which(bfs1==max(bfs1))],
+            models[which(bfs2==max(bfs2))],
+            models[which(bfs3==max(bfs3))],
+            models[which(bfs4==max(bfs4))],
+            models[which(bfs5==max(bfs5))])
+
+  effect.names <- c("State Effect", "Religiosity Effect","Context Effect","State-by-Religiosity Effect","State-by-Context Effect")
+  tab <- cbind(effect.names, estimates,rbind(bf1,bf2,bf3,bf4,bf5),pref)
+  colnames(tab) <- c("Effect","$\\mu$ [95% CI]","BF$_{10}$","BF$_{+1}$","Preferred")
+  return(tab)
+}
+
+models_0 <- list(b5u_norm,b5c_norm,
+                 b4u_norm,b4c_norm,
+                 b3u_norm,b3c_norm,
+                 b2u_norm,b2c_norm,
+                 b1u_norm,b1c_norm,
+                 b0_norm)
+names(bridges_norm) <- names(bridges_1)
+tab0 <- summ(bridgelist = bridges_norm, modellist = models_0, I=I)
+tab1 <- summ(bridgelist = bridges_1, modellist = models_1, I=I)
+tab2 <- summ(bridgelist = bridges_2, modellist = models_2, I=I)
+tab3 <- summ(bridgelist = bridges_3, modellist = models_3, I=I)
+tab4 <- summ(bridgelist = bridges_4, modellist = models_4, I=I)
+tab5 <- summ(bridgelist = bridges_5, modellist = models_5, I=I)
+
+tab <- data.frame(rbind(tab0,tab1,tab2,tab3,tab4,tab5))
+tab$Effect <- factor(tab$Effect, levels = c("State Effect","Religiosity Effect","Context Effect",
+                                            "State-by-Religiosity Effect","State-by-Context Effect"))
+tab <- tab[order(tab$Effect),]
+tab$set <- rep(c("Main analysis","Hearing as mental","Manipulation check failure","Education and age as covariates"
+                 ,"Excluding Lithuania$^a$","Cauchy prior on sd$^a$"), times=5)
+tab <- tab[,c(6,2:5)]
+
+
+#create the table
+tab %>% 
+  kbl(caption = "Bayes factor of different models for robustness checks"
+        , booktabs=T
+        , escape = F
+        , align = c("lcccc")
+        , col.names = c("Robustness set","$\\mu$ [95\\% CI]","BF$_{10}$","BF$_{+1}$","Preferred")
+        , row.names = F) %>%
+  kable_styling(latex_options = "hold_position") %>% 
+  pack_rows("State Effect", 1, 6) %>%
+  pack_rows("Religiosity Effect", 7, 12) %>%
+  pack_rows("Context Effect", 13, 18) %>%
+  pack_rows("State-by-Religiosity Effect", 19,24) %>%
+  pack_rows("State-by-Context Effect", 25, 30) %>%
+  footnote(general = 'Across all five sets of robustness checks, the results is qualitatively equal to those of the main analyses; the data indicate (a) strong state, religiosity, and context effects that vary between countries but are consistently positive (mind > body; religious > non-religious; theistic context > secular context), (b) a varying state-by-religiosity interaction effect (though sometimes the unconstrained model is preferred), and (c) no state-by-context effect. Subscripts reflect parameter constraints; $_0$ indicates the null model, $_+$ indicates a varying positive effect, and $_1$ indicates a common effect.'
+           , footnote_as_chunk = T
+           , threeparttable = T
+           , escape = F)
+```
+
+
+

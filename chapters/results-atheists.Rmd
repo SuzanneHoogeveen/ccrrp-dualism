@@ -1,0 +1,273 @@
+---
+title: "results_atheists"
+output: html_document
+---
+```{r ath-data}
+# select relevant columns
+dat_ath <- mydata %>% 
+  dplyr::select(country, hunger, hearing, brains, knowledge, love, 
+                desire, condition, subject, R_religiousID, R_afterlife) %>%
+  mutate(mind = knowledge+love+desire,
+         body = hunger+hearing+brains) %>%
+  pivot_longer(cols = mind:body, names_to = 'state', values_to = 'resp') %>%
+  mutate(cat = ifelse(state == 'body', -1/2, 1/2),
+         con = ifelse(condition == "Secular", -1/2, 1/2),
+         relID = R_religiousID,
+         aft = R_afterlife,
+         group = as.numeric(as.factor(paste(condition,cat))),
+         R_religiousID = NULL,
+         R_afterlife = NULL,
+         site = as.numeric(as.factor(country))) %>%
+  dplyr::select(country,subject,cat,con,group,site,resp,relID,aft) %>%
+  arrange(subject)
+
+dat_non <- dat_ath %>%
+  filter(relID==0&aft==0) %>%
+  dplyr::select(-(c(relID,aft)))
+
+countries <- unique(dat_non$country)
+I <- length(unique(dat_non$site))
+
+```
+
+```{r ath-models}
+b5u_ath <- 
+  brm(data = dat_non, family = binomial,
+      resp | trials(3) ~ 1 + cat + con + cat:con +
+        (1 + cat + con + cat:con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5u_ath")
+b5c_ath <- 
+  brm(data = dat_non, family = binomial,
+      resp | trials(3) ~ 1 + cat + con + cat:con +
+        (1 + cat + con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5c_ath")
+b3u_ath <-
+  brm(data = dat_non, family = binomial,
+      resp | trials(3) ~ 1 + cat + con + 
+        (1 + cat + con | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3u_ath")
+b3c_ath <-
+  brm(data = dat_non, family = binomial,
+      resp | trials(3) ~ 1 + cat + con + 
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3c_ath")
+b1u_ath <-
+  brm(data = dat_non, family = binomial,
+      resp | trials(3) ~ 1 + cat +
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1u_ath")
+b1c_ath <-
+  brm(data = dat_non, family = binomial,
+      resp | trials(3) ~ 1 + cat + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1c_ath")
+b0_ath <-
+  brm(data = dat_non, family = binomial,
+      resp | trials(3) ~ 1 + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b0_ath")
+```
+
+
+```{r bridge-ath, cache=TRUE, results='hide', message=FALSE, eval=sample}
+# use bridgesampling to get the logml and Bayes factors 
+bridge5_ath <- bridge_sampler(b5u_ath)
+bridge3_ath <- bridge_sampler(b3u_ath)
+bridge1_ath <- bridge_sampler(b1u_ath)
+bridge5c_ath <- bridge_sampler(b5c_ath)
+bridge3c_ath <- bridge_sampler(b3c_ath)
+bridge1c_ath <- bridge_sampler(b1c_ath)
+bridge0_ath <- bridge_sampler(b0_ath)
+#save bridgesampling objects, so they can be reloaded
+bridges_ath <- list(bridge0_ath=bridge0_ath, 
+                     bridge1c_ath=bridge1c_ath, bridge1_ath=bridge1_ath,
+                     bridge3c_ath=bridge3c_ath, bridge3_ath=bridge3_ath,
+                     bridge5c_ath=bridge5c_ath, bridge5_ath=bridge5_ath)
+saveRDS(bridges_ath, file = "models/saved_models/bridges_atheists.rds")
+```
+
+```{r load-bridge-ath, eval=(!sample)}
+bridges_ath <- readRDS(file = "models/saved_models/bridges_atheists.rds")
+```
+
+```{r some-descriptives-ath}
+cont_once_ath <- dat_non %>% group_by(subject) %>% dplyr::summarise(continuity = sum(resp)) %>% dplyr::summarise(cont_once = sum(continuity>0) / n(),  cont_all = sum(continuity==6) / n())
+cont_phys_ath <- mean(dat_non$resp[dat_non$cat==-0.5])/3
+cont_mind_ath <- mean(dat_non$resp[dat_non$cat==0.5])/3
+```
+
+```{r estimates-ath}
+vars <- get_variables(b5u_ath)[c(2:4,6:8)]
+sd_ath <- posterior_summary(b5u_ath, robust=TRUE)[vars,c(1,3,4)]
+estimates_ath <- apply(sd_ath,1,writeCI)
+```
+
+```{r BFtable-ath}
+ bfs1_ath <- getBFs(bridge0 = bridges_ath$bridge0_ath$logml,
+               bridge1 = bridges_ath$bridge1c_ath$logml,
+               bridge2 = bridges_ath$bridge1_ath$logml, 
+               m1 = b1c_ath, m2 = b1u_ath, 
+               param = "cat", I = I)
+bfs3_ath <- getBFs(bridge0 = bridges_ath$bridge1_ath$logml,
+               bridge1 = bridges_ath$bridge3c_ath$logml,
+               bridge2 = bridges_ath$bridge3_ath$logml, 
+               m1 = b3c_ath, m2 = b3u_ath, 
+               param = "con", I = I)
+bfs5_ath <- getBFs(bridge0 = bridges_ath$bridge3_ath$logml,
+               bridge1 = bridges_ath$bridge5c_ath$logml,
+               bridge2 = bridges_ath$bridge5_ath$logml, 
+               m1 = b5c_ath, m2 = b5u_ath, 
+               param = "cat:con", I = I)
+bf1_ath <- writeBF(bfs1_ath)
+bf3_ath <- writeBF(bfs3_ath)
+bf5_ath <- writeBF(bfs5_ath)
+
+effect.names <- c("State Effect", "Framing Effect","State-by-Framing Effect")
+
+# table 3 1 and smaller
+bfs10_ath <- writeBF01(bfs1_ath)
+bfs30_ath <- writeBF01(bfs3_ath)
+bfs50_ath <- writeBF01(bfs5_ath)
+
+tab4 <- data.frame(effect.names,
+                   rbind(bfs10_ath,bfs30_ath,bfs50_ath), 
+                   estimates_ath[1:3], estimates_ath[4:6])
+colnames(tab4) = c("Effect", "$\\calM_0$", "$\\calM_1$", "$\\calM_+$", "$\\calM_u$","$\\mu$","$\\sigma$")
+rownames(tab4) = NULL
+
+tab4[,2:5] <- t(apply(tab4[,2:5],1,makebold))
+
+kbl(tab4, 
+    escape = FALSE, 
+    booktabs = TRUE,
+    align = "lcccccc",
+    caption = "Bayes factor model comparison and parameter estimates for the key effects for atheists extinctivists only",
+    row.names = FALSE) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("", "Bayes factors" = 4, "Parameter estimates" = 2)) %>%
+  footnote(general = "The preferred model for each effect is assigned value 1.00 and displayed in bold. The remaining values are the Bayes factors for the respective model relative to this preferred model. Subscripts reflect constraints on the critical parameter; $_{0}$ indicates no effect, $_{1}$ indicates a common (positive) effect, $_{+}$ indicates a varying positive effect, and $_{u}$ indicates an unconstrained effect. Parameter estimates (median and 95\\\\% credible interval) are taken from the unconstrained model for $\\\\calH_5$.", general_title = "Note.", threeparttable = TRUE, 
+           footnote_as_chunk = TRUE, escape = FALSE)
+```
+
+
+```{r predicted-effect-ath}
+prob_effect_ath = function(data, digits=3, summary=T, percentage=T){
+  f <-
+  fitted(b5u_ath,
+         newdata = data,
+         summary = FALSE,
+         allow_new_levels = T,
+         sample_new_levels = "gaussian") %>% 
+  as_tibble() %>% 
+  mutate(effect = (V2-V1)/3)
+  if(summary) {
+    effect <- writeCI(c(median(f$effect),quantile(f$effect, p=c(.025,.975))), digits = digits, percentage = percentage)
+    } else {effect <- f$effect}
+  return(effect)
+}
+nd <- data.frame(cat=c(-1/2,1/2),con=c(0,0))
+state_eff_ath <- prob_effect_ath(data=nd, percentage = T)
+nd <- data.frame(cat=c(0,0),con=c(-1/2,1/2))
+con_eff_ath <- prob_effect_ath(data=nd)
+```
+
+```{r plot-estimates-ath, fig.asp= 0.8, fig.height = 10, fig.pos = 'H', fig.align = 'center', fig.cap = "Estimated country-level effects (posterior medians) in increasing order. a. state contrast effects. b. framing effects. c. state-by-framing effects. d. intercepts. Each dot represents a country. Estimates with credible intervals colored in red exclude zero and estimates with credible intervals colored in grey include zero. The errorbars give the 95\\% credible interval for each country. The vertical lines denote the posterior median of the overall mean of the respective effect with the 95\\% credible interval in the shaded bands. The dashed lines indicates zero."}
+# plot country estimates
+
+cols_mode <- c('slateblue','black')
+options <- list(title          = "a. State effect (atheists)",
+                xaxislabel     = "",
+                yaxislabel     = '', 
+                xLimits        = c(0,4),
+                xLimitBreaks   = seq(0,4,by=1),
+                xLimitLabels   = c("Body",seq(1,3,by=1),"Mind"),
+                colors         = cols_mode)
+p1 <- plotEst(model = b5u_ath, options=options, effect="cat")
+options$title = "b. Framing effect (atheists)"
+options$xLimits = c(-2,3)
+options$xLimitBreaks = seq(-2,3,by=1)
+options$xLimitLabels = c("Secular","",seq(0,1,by=1),"","Religious")
+p2 <- plotEst(model = b5u_ath, options=options, effect="con")
+options$title = "c. State-by-framing effect (atheists)"
+options$xLimits = c(-2,2)
+options$xLimitBreaks = seq(-2,2,by=1)
+options$xLimitLabels = c("Weaker\ndualism",seq(-1,1,by=1),"Stronger\ndualism")
+p3 <- plotEst(model = b5u_ath, options=options, effect="cat:con")
+options$title = "c. Continuity (atheists)"
+options$xLimits = c(-5,0)
+options$xLimitBreaks = seq(-5,0,by=1)
+options$xLimitLabels = c("Ceases","",seq(-3,-2,by=1),"","Continues")
+p4 <- plotEst(model = b5u_ath, options=options, effect="Intercept")
+
+plot_grid(p1,p2,p3,p4, ncol = 2)
+
+```
+```{r plot-estimates-ath-2, fig.asp= 0.5, fig.height = 10, fig.pos = 'H', fig.align = 'center', fig.cap = "Estimated country-level effects (posterior medians) in increasing order. a. state contrast effects. b. framing effects. c. state-by-framing effects. d. intercepts. Each dot represents a country. Estimates with credible intervals colored in red exclude zero and estimates with credible intervals colored in grey include zero. The errorbars give the 95\\% credible interval for each country. The vertical lines denote the posterior median of the overall mean of the respective effect with the 95\\% credible interval in the shaded bands. The dashed lines indicates zero."}
+plot_grid(p1,p2,p4,NULL, ncol = 4, rel_widths = c(1,1,1,.1))
+```
+
+
+
+
+

@@ -1,0 +1,968 @@
+---
+title: "Results"
+output: html_document
+---
+
+```{r 'items', fig.width=8, fig.height=5, fig.align='center', fig.pos="H", fig.cap="Descriptive pattern per state. Probability of continuity judgment per item, displayed per framing condition. The states were measured within-subjects and the framing was manipulated between-subjects."}
+cols <- c('#2A363B','#99B898','#96281B','#FF847C')
+
+barcols <- rep(cols, times=3)
+
+plotdat <- dat_long
+plotdat$Context <- factor(plotdat$con, levels = c(-0.5,0.5), labels = c("secular","religious"))
+plotdat$state <- factor(plotdat$state, levels = levels(plotdat$state)[c(1,3,2,5,6,4)])
+plotdat$category <- factor(plotdat$cat, levels = c(-0.5,0.5),labels = c("body","mind"))
+apa_barplot(
+  data = plotdat,
+  id = "subject",
+  dv = "resp",
+  dispersion = within_subjects_conf_int,
+  factors = c("state","Context"),
+  ylab = "Probability Continuity",
+  xlab = "State",
+  las = 1, 
+  args_rect = list(col=barcols[c(1:4,9,10,5:8,11,12)]), 
+  args_legend = list(fill=c(cols), legend = c("Physical state - religious framing", "Physical state - secular framing","Mental state - religious framing","Mental state - secular framing"), title="")
+)
+
+```
+
+```{r 'descriptives-country', fig.width = 8, fig.height = 8, fig.align = 'center', fig.pos="H", fig.cap="Descriptive pattern of results per country. Countries are ordered by the overall probability of making a continuity judgment (from left to right, top to bottom). Red lines denote probabilities for mental states and blue lines denote probabilities for the physical states. Solid lines denote probabilities in the religious context and dashed lines denote probabilities in the secular context. Data points are jittered to enhance visibility. Probabilities are averaged over the three items per category and religiosity was split into 6 levels."}
+
+dat_plot <- mydata %>%
+  dplyr::select(country, hunger, hearing, brains, knowledge, love, desire, religiosity.s, condition, subject) %>%
+  mutate(body = hunger+hearing+brains,
+         mind = knowledge+love+desire,
+         rel = religiosity.s,
+         context = condition) %>%
+  dplyr::select(country,body,mind,rel,context,subject) %>%
+  gather(state, resp, body:mind) %>%
+  mutate(condition = factor(paste(state, context)), 
+         prob = resp/3)
+
+dat <- dat %>% 
+  mutate(condition = factor(group, levels = c(1,3,2,4),
+                            labels = c("body Religious","body Secular"
+                                       ,"mind Religious","mind Secular")),
+         prob = resp/3)
+
+plot_countries = function(data, ind_data, options, x, y, condition){
+
+  plotTitle    <- options$title
+  xlab         <- options$xaxislabel
+  ylab         <- options$yaxislabel
+  yLimits      <- options$yLimits
+  xLimits      <- options$xLimits
+  yLimitBreaks <- options$yLimitBreaks
+  xLimitBreaks <- options$xLimitBreaks
+  yLimitLabels <- options$yLimitLabels
+  xLimitLabels <- options$xLimitLabels
+  colors       <- options$colors
+  xaxisSize    <- options$xaxisSize
+  conditionlab <- options$conditionlabel
+  
+  ind_data[[y]] = jitter(ind_data[[y]])
+  ord <- data %>% 
+    group_by(country) %>%
+    summarise(total_prob = mean(resp)/max(resp)) %>%
+    arrange(desc(total_prob))
+
+  p <- ggplot(data, aes_string(x, y, group = condition)) +
+    geom_point(data = ind_data, aes_string(x=x, y=y, color = condition), alpha = .05) +
+    geom_smooth(aes(fill = condition, color = condition), method = "glm", 
+                method.args = list(family = "binomial"), se=TRUE, fullrange=TRUE) +  
+    scale_color_manual(name = "", values = colors, labels = conditionlab) +
+    scale_fill_manual(name = "", values = colors, labels = conditionlab) +
+    ggtitle(plotTitle) + 
+    facet_wrap(~factor(country, levels = ord$country), nrow = 4, ncol = 6)
+  if(!is.null(yLimitLabels) & !is.null(yLimitBreaks)){
+    
+    p <- p + ggplot2::scale_y_continuous(labels=yLimitLabels, breaks = yLimitBreaks) 
+    
+  } else {
+    p <- p + ggplot2::scale_y_continuous() 
+  }
+  
+  if(!is.null(xLimitLabels) & !is.null(xLimitBreaks)){
+    
+    p <- p + ggplot2::scale_x_continuous(labels=xLimitLabels, breaks = xLimitBreaks) 
+    
+  } else {
+    p <- p + ggplot2::scale_x_continuous() 
+  }
+
+  ### Theming & Cleaning
+  p <- p +
+    base_breaks_x(xLimits) +
+    base_breaks_y(yLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) +
+    my_theme()
+  return(p)
+}
+
+options <- list(title          = "Observed Data",
+                xaxislabel     = "Religiosity",
+                yaxislabel     = 'Probability of Continuity', 
+                yLimits        = c(0,1),
+                xLimits        = c(range(dat$rel)[1]+.1*diff(range(dat$rel)),
+                                   range(dat$rel)[2]-.1*diff(range(dat$rel))),
+                yLimitBreaks   = seq(0,1,length.out = 6),
+                xLimitBreaks   = c(range(dat$rel)[1]+.1*diff(range(dat$rel)),
+                                   range(dat$rel)[2]-.1*diff(range(dat$rel))),
+                yLimitLabels   = seq(0,1,length.out = 6),
+                xLimitLabels   = c('Low', 'High'),
+                colors         = cols,
+                conditionlabel = c("Physical state\nReligious framing",
+                                "Physical state\nSecular framing",
+                                "Mental state\nReligious framing",
+                                "Mental state\nSecular framing")
+                )
+
+p <- plot_countries(data = dat, ind_data = dat_plot, options = options, 
+                    x = "rel", y = "prob", condition = "condition")
+
+p 
+```
+
+```{r 'descriptives-plot', fig.width = 8, fig.height = 5, fig.align = 'center', fig.pos="H", fig.cap="Descriptive pattern of results. Panel \\textbf{a} displays the probability of making a continuity judgment per state category (physical vs. mental), framing (secular vs. religious) and individual level of religiosity. Panel \\textbf{b} shows the difference in probability for mental vs. physical processes (contrast effect)."}
+
+plot_overall = function(data, ind_data, options, x, y, condition){
+
+  plotTitle    <- options$title
+  xlab         <- options$xaxislabel
+  ylab         <- options$yaxislabel
+  yLimits      <- options$yLimits
+  xLimits      <- options$xLimits
+  yLimitBreaks <- options$yLimitBreaks
+  xLimitBreaks <- options$xLimitBreaks
+  yLimitLabels <- options$yLimitLabels
+  xLimitLabels <- options$xLimitLabels
+  colors       <- options$colors
+  xaxisSize    <- options$xaxisSize
+  conditionlab <- options$conditionlabel
+  
+  ind_data[[y]] = jitter(ind_data[[y]])
+  
+  p <- ggplot(data, aes_string(x, y, group = condition)) +
+    geom_point(data = ind_data, aes_string(x=x, y=y, color = condition), alpha = .01) +
+    geom_smooth(aes(fill = condition, color = condition), method = "glm", 
+                method.args = list(family = "binomial"), se=TRUE) +  
+    scale_color_manual(name = "", values = colors, labels = conditionlab) +
+    scale_fill_manual(name = "", values = colors, labels = conditionlab) +
+    ggtitle(plotTitle)
+  if(!is.null(yLimitLabels) & !is.null(yLimitBreaks)){
+    p <- p + ggplot2::scale_y_continuous(labels=yLimitLabels, breaks = yLimitBreaks) 
+  } else {
+    p <- p + ggplot2::scale_y_continuous() 
+  }
+  if(!is.null(xLimitLabels) & !is.null(xLimitBreaks)){
+    p <- p + ggplot2::scale_x_continuous(labels=xLimitLabels, breaks = xLimitBreaks) 
+  } else {
+    p <- p + ggplot2::scale_x_continuous() 
+  }
+
+  ### Theming & Cleaning
+  p <- p +
+    base_breaks_x(xLimits) +
+    base_breaks_y(yLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) +
+    my_theme() +
+    theme(legend.position = c(.35,.85),
+          plot.title = element_text(size = 12))
+  return(p)
+}
+
+options$title <- "Observed Probability of Continuity"
+options$xLimits <- c(range(dat$rel)[1], range(dat$rel)[2])
+options$xLimitBreaks <- c(range(dat$rel)[1], range(dat$rel)[2])
+options$conditionlabel <- c("Physical state - religious framing",
+                            "Physical state - secular framing",
+                            "Mental state - religious framing",
+                            "Mental state - secular framing")
+p <- plot_overall(data = dat, ind_data = dat_plot, options = options, 
+                  x = "rel", y = "prob", condition = "condition")
+
+p <- ggExtra::ggMarginal(p, groupColour = TRUE)
+
+dat_diff <- mydata %>%
+  mutate(diff = ((knowledge+love+desire)-(hunger+brains+hearing))/3,
+         rel = religiosity.s) %>%
+  dplyr::select(country, rel, condition, diff)
+
+
+plot_difference = function(data, options, x, y, condition){
+
+  plotTitle    <- options$title
+  xlab         <- options$xaxislabel
+  ylab         <- options$yaxislabel
+  yLimits      <- options$yLimits
+  xLimits      <- options$xLimits
+  yLimitBreaks <- options$yLimitBreaks
+  xLimitBreaks <- options$xLimitBreaks
+  yLimitLabels <- options$yLimitLabels
+  xLimitLabels <- options$xLimitLabels
+  colors       <- options$colors
+  xaxisSize    <- options$xaxisSize
+  conditionlab <- options$conditionlabel
+  
+  ind_data = data
+  ind_data[[y]] = jitter(ind_data[[y]])
+  
+  p <- ggplot(data, aes_string(x, y, group = condition)) +
+    geom_point(data = ind_data, aes_string(x,y,color=condition), alpha = 0.02) +
+    geom_smooth(aes(fill = condition, color = condition), se=TRUE) +  
+    scale_color_manual(name = "", values = colors, labels = conditionlab) +
+    scale_fill_manual(name = "", values = colors, labels = conditionlab) + 
+    geom_hline(yintercept=0) +
+    ggtitle(plotTitle) 
+  if(!is.null(yLimitLabels) & !is.null(yLimitBreaks)){
+    p <- p + ggplot2::scale_y_continuous(labels=yLimitLabels, breaks = yLimitBreaks) 
+  } else {
+    p <- p + ggplot2::scale_y_continuous() 
+  }
+  if(!is.null(xLimitLabels) & !is.null(xLimitBreaks)){
+    p <- p + ggplot2::scale_x_continuous(labels=xLimitLabels, breaks = xLimitBreaks) 
+  } else {
+    p <- p + ggplot2::scale_x_continuous() 
+  }
+
+  ### Theming & Cleaning
+  p <- p +
+    base_breaks_x(xLimits) +
+    base_breaks_y(yLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) +
+    my_theme() +
+    theme(legend.position = c(.25,.9), 
+          plot.title = element_text(size = 12))
+  return(p)
+}
+
+options$title <- "Difference Mental vs. Physical States"
+options$yaxislabel <- 'Mental minus Physical States'
+options$yLimits <- c(-1,1)
+options$yLimitBreaks <- seq(-1,1,length.out = 5)
+options$yLimitLabels <- seq(-1,1,length.out = 5)
+options$colors <- c("grey36","grey")
+options$conditionlabel <- c("Religious framing","Secular framing")
+
+q <- plot_difference(data = dat_diff, options = options, 
+                     x = "rel", y = "diff", condition = "condition")
+q <- ggExtra::ggMarginal(q, groupColour = TRUE)
+cowplot::plot_grid(p,q, ncol=2, labels = "auto")
+```
+
+```{r 'modal-resp'}
+modes <- mydata %>%
+  mutate(resp = hunger+hearing+brains+love+knowledge+desire) %>% 
+  group_by(country) %>%
+  summarize(modal = getmode(resp))
+total_mode <- mydata %>%
+  mutate(resp = hunger+hearing+brains+love+knowledge+desire) %>% 
+  summarize(modal = getmode(resp))
+```
+
+```{r 'fig-pp', fig.width = 8, fig.height = 8, fig.align = 'center', fig.pos="H", fig.cap="Proportion of participants and number of continuity responses per country. Countries are ordered by the overall probability of making a continuity judgment (from left to right, top to bottom). Dark grey bars reflect responses in the religious context and light grey bars reflect responses in the secular context. The modal number of continuity responses per country is indicated in green. Continuity responses were out of 6 states."}
+plot_people = function(data, options, y, x, condition, mode_data){
+  
+  plotTitle    <- options$title
+  xlab         <- options$xaxislabel
+  ylab         <- options$yaxislabel
+  yLimits      <- options$yLimits
+  xLimits      <- options$xLimits
+  yLimitBreaks <- options$yLimitBreaks
+  xLimitBreaks <- options$xLimitBreaks
+  yLimitLabels <- options$yLimitLabels
+  xLimitLabels <- options$xLimitLabels
+  colors       <- options$colors
+  xaxisSize    <- options$xaxisSize
+  conditionlab <- options$conditionlabel
+  
+  ord <- data %>% 
+    mutate(resp = hunger+hearing+brains+love+knowledge+desire) %>%
+    group_by(country) %>%
+    summarise(total_prob = mean(resp)/max(resp)) %>%
+    arrange(desc(total_prob))
+
+  # take proportion  
+  data <- data %>%
+    mutate(resp = hunger+hearing+brains+love+knowledge+desire) %>% 
+    group_by(country) %>%
+    mutate(n_country = n()) %>%
+    ungroup() %>%
+    group_by(country,condition,resp) %>%
+    summarize(n = n()/n_country[1])
+  data <- merge(data, mode_data)
+  data$highlight = data$resp==data$modal
+  data$highlight = factor(paste(data$highlight, data$condition))
+  highlight = "highlight"
+
+  p <- ggplot(data, aes_string(y=y, x=x, fill = highlight)) +
+    geom_bar(position="stack",stat="identity", aes_string(fill=highlight)) +
+    geom_point(aes_string(x=x, y=y, fill = condition)) + 
+    coord_flip() + 
+    scale_color_manual(name = "", values = colors[1:2]) +
+    scale_fill_manual(name = "", values = colors, guide=FALSE) +
+    #guides(fill = guide_legend(override.aes = list(color = colors[1:2]), labels = conditionlab)) + 
+    ggtitle(plotTitle) + 
+    facet_wrap(~factor(country, levels = ord$country), nrow = 4, ncol = 6)
+  
+  p <- ggplot(data, aes_string(y=y, x=x)) +
+    geom_bar(position="stack",stat="identity", aes(fill = highlight)) +
+    geom_point(aes(color=condition), alpha=0) + 
+    coord_flip() + 
+    scale_color_manual(name = "", values = c("Religious framing" = colors[1], "Secular framing" = colors[2])) +
+    guides(color = guide_legend(override.aes = list(alpha = 1, shape = 15, size = 5))) + 
+    scale_fill_manual(name = "", values = colors, guide="none") +
+    ggtitle(plotTitle) + 
+    facet_wrap(~factor(country, levels = ord$country), nrow = 4, ncol = 6)
+  if(!is.null(yLimitLabels) & !is.null(yLimitBreaks)){
+    
+    p <- p + ggplot2::scale_y_continuous(labels=yLimitLabels, breaks = yLimitBreaks) 
+    
+  } else {
+    p <- p + ggplot2::scale_y_continuous() 
+  }
+  
+  if(!is.null(xLimitLabels) & !is.null(xLimitBreaks)){
+    
+    p <- p + ggplot2::scale_x_continuous(labels=xLimitLabels, breaks = xLimitBreaks) 
+    
+  } else {
+    p <- p + ggplot2::scale_x_continuous() 
+  }
+
+  ### Theming & Cleaning
+  p <- p +
+    base_breaks_x(xLimits) +
+    base_breaks_y(yLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) + 
+    my_theme()
+}
+
+cols_mode <- c('#1B9E77','#7FC97F')
+options <- list(title          = "Responses per country and condition",
+                xaxislabel     = "Number of continuity responses (out of 6)",
+                yaxislabel     = 'Proportion of participants', 
+                yLimits        = c(0,0.8),
+                xLimits        = c(0,6),
+                yLimitBreaks   = seq(0,0.8,length.out = 3),
+                xLimitBreaks   = 0:6,
+                yLimitLabels   = seq(0,0.8,length.out = 3),
+                xLimitLabels   = 0:6,
+                colors         = c("grey36","grey",cols_mode),
+                conditionlabel = c("Religious framing","Secular framing")
+                )
+p <- plot_people(data=mydata, options=options, y="n", x="resp", condition="condition", mode_data = modes)
+p
+```
+
+```{r some-descriptives}
+cont_once <- dat %>% group_by(subject) %>% dplyr::summarise(continuity = sum(resp)) %>% dplyr::summarise(cont_once = sum(continuity>0) / n(),  cont_all = sum(continuity==6) / n())
+cont_phys <- mean(dat$resp[dat$cat==-0.5])/3
+cont_mind <- mean(dat$resp[dat$cat==0.5])/3
+```
+
+```{r sampling-settings}
+iterations <- 5500
+warmup <- 500
+chains <- 4
+```
+
+```{r norm-models}
+b5u_norm <- 
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel + cat:con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5u_norm")
+b5c_norm <- 
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:con +
+        (1 + cat + rel + con + cat:rel| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b5c_norm")
+b4u_norm <-
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con + cat:rel | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4u_norm")
+b4c_norm <-
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + 
+        (1 + cat + rel + con| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file= "models/saved_models/b4c_norm")
+b3u_norm <-
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + 
+        (1 + cat + rel + con | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3u_norm")
+b3c_norm <-
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b3c_norm")
+b2u_norm <-
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + 
+        (1 + cat + rel| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2u_norm")
+b2c_norm <-
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + 
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b2c_norm")
+b1u_norm <-
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat +
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1u_norm")
+b1c_norm <-
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b1c_norm")
+b0_norm <-
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + 
+        (1 | site),
+      c(prior(normal(0, 1), class = Intercept),
+        prior(normal(0, 1), class = sd, coef = "Intercept", group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "models/saved_models/b0_norm")
+```
+
+```{r bridge-norm, cache=TRUE, results='hide', message=FALSE, eval=sample}
+# use bridgesampling to get the logml and Bayes factors 
+bridge5_norm <- bridge_sampler(b5u_norm)
+bridge4_norm <- bridge_sampler(b4u_norm)
+bridge3_norm <- bridge_sampler(b3u_norm)
+bridge2_norm <- bridge_sampler(b2u_norm)
+bridge1_norm <- bridge_sampler(b1u_norm)
+bridge5c_norm <- bridge_sampler(b5c_norm)
+bridge4c_norm <- bridge_sampler(b4c_norm)
+bridge3c_norm <- bridge_sampler(b3c_norm)
+bridge2c_norm <- bridge_sampler(b2c_norm)
+bridge1c_norm <- bridge_sampler(b1c_norm)
+bridge0_norm <- bridge_sampler(b0_norm)
+#save bridgesampling objects, so they can be reloaded
+bridges_norm <- list(bridge0_norm=bridge0_norm, 
+                     bridge1c_norm=bridge1c_norm, bridge1_norm=bridge1_norm,
+                     bridge2c_norm=bridge2c_norm, bridge2_norm=bridge2_norm,
+                     bridge3c_norm=bridge3c_norm, bridge3_norm=bridge3_norm,
+                     bridge4c_norm=bridge4c_norm, bridge4_norm=bridge4_norm,
+                     bridge5c_norm=bridge5c_norm, bridge5_norm=bridge5_norm)
+saveRDS(bridges_norm, file = "models/saved_models/bridges_normal.rds")
+```
+
+```{r load-bridge, eval=(!sample)}
+bridges_norm <- readRDS(file = "models/saved_models/bridges_normal.rds")
+```
+
+```{r estimates-norm}
+vars <- get_variables(b5u_norm)[c(2:6,8:12)]
+sd_norm <- posterior_summary(b5u_norm, robust=TRUE, variable = vars)[,c(1,3,4)]
+estimates <- apply(sd_norm,1,writeCI)
+```
+
+
+```{r BFtable}
+bfs1 <- getBFs(bridge0 = bridges_norm$bridge0_norm$logml,
+               bridge1 = bridges_norm$bridge1c_norm$logml,
+               bridge2 = bridges_norm$bridge1_norm$logml, 
+               m1 = b1c_norm, m2 = b1u_norm, 
+               param = "cat", I = I)
+bfs2 <- getBFs(bridge0 = bridges_norm$bridge1_norm$logml,
+               bridge1 = bridges_norm$bridge2c_norm$logml,
+               bridge2 = bridges_norm$bridge2_norm$logml, 
+               m1 = b2c_norm, m2 = b2u_norm, 
+               param = "rel", I = I)
+bfs3 <- getBFs(bridge0 = bridges_norm$bridge2_norm$logml,
+               bridge1 = bridges_norm$bridge3c_norm$logml,
+               bridge2 = bridges_norm$bridge3_norm$logml, 
+               m1 = b3c_norm, m2 = b3u_norm, 
+               param = "con", I = I)
+bfs4 <- getBFs(bridge0 = bridges_norm$bridge3_norm$logml,
+               bridge1 = bridges_norm$bridge4c_norm$logml,
+               bridge2 = bridges_norm$bridge4_norm$logml, 
+               m1 = b4c_norm, m2 = b4u_norm, 
+               param = "cat:rel", I = I)
+bfs5 <- getBFs(bridge0 = bridges_norm$bridge4_norm$logml,
+               bridge1 = bridges_norm$bridge5c_norm$logml,
+               bridge2 = bridges_norm$bridge5_norm$logml, 
+               m1 = b5c_norm, m2 = b5u_norm, 
+               param = "cat:con", I = I)
+bf1 <- writeBF(bfs1)
+bf2 <- writeBF(bfs2)
+bf3 <- writeBF(bfs3)
+bf4 <- writeBF(bfs4)
+bf5 <- writeBF(bfs5)
+
+effect.names <- c("State Effect", "Religiosity Effect","Framing Effect","State-by-Religiosity Effect","State-by-Framing Effect")
+tab <- data.frame(effect.names,rbind(bf1,bf2,bf3,bf4,bf5))
+colnames(tab) = c("Effect", "$\\calM_0$", "$\\calM_1$", "$\\calM_+$", "$\\calM_u$")
+rownames(tab) = NULL
+tab[tab[,]=="1-to-1"] <- "*"
+
+# table 1 Bayes factors on normal scale 
+#papaja::apa_table(tab, placement= "H", 
+#          align = c("l","c","c","c","c"), 
+#          caption = "Bayes factor model comparisons for the key effects", 
+#          col_spanners = list("Evidence (vs. best model)" = c(2,5)),
+#          escape = FALSE, 
+#          note="Asterisks mark the preferred model for each effect. The remaining values are the Bayes factors for respective model vs. the preferred model for each effect. Subscripts reflect constraints on the critical parameter; $_{0}$ indicates no effect, $_{1}$ indicates a common (positive) effect, $_{+}$ indicates a varying positive effect, and $_{u}$ indicates an unconstrained effect.")
+
+# table 3 1 and smaller
+bfs10 <- writeBF01(bfs1)
+bfs20 <- writeBF01(bfs2)
+bfs30 <- writeBF01(bfs3)
+bfs40 <- writeBF01(bfs4)
+bfs50 <- writeBF01(bfs5)
+
+tab3 <- data.frame(effect.names,
+                   rbind(bfs10,bfs20,bfs30,bfs40,bfs50), 
+                   estimates[1:5], estimates[6:10])
+colnames(tab3) = c("Effect", "$\\calM_0$", "$\\calM_1$", "$\\calM_+$", "$\\calM_u$","$\\mu$","$\\sigma$")
+rownames(tab3) = NULL
+
+makebold <- function(x){
+  x <- sapply(x, function(y) formatC(y, digits=2, format='f'))
+  cell_spec(x, bold = ifelse(x=="1.00",T,F))
+}
+
+tab3[,2:5] <- t(apply(tab3[,2:5],1,makebold))
+
+kbl(tab3, 
+    escape = FALSE, 
+    booktabs = TRUE,
+    align = "lcccccc",
+    caption = "Bayes factor model comparison and parameter estimates for the key effects",
+    row.names = FALSE) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("", "Bayes factors" = 4, "Parameter estimates" = 2)) %>%
+  footnote(general = "The preferred model for each effect is assigned value 1.00 and displayed in bold. The remaining values are the Bayes factors for the respective model relative to this preferred model. Subscripts reflect constraints on the critical parameter; $_{0}$ indicates no effect, $_{1}$ indicates a common (positive) effect, $_{+}$ indicates a varying positive effect, and $_{u}$ indicates an unconstrained effect. Parameter estimates (median and 95\\\\% credible interval) are taken from the unconstrained model for $\\\\calH_5$.", general_title = "Note.", threeparttable = TRUE, 
+           footnote_as_chunk = TRUE, escape = FALSE)
+```
+
+```{r predicted-effect}
+cat <- c(-1/2,0,1/2)
+con <- c(-1/2,0,1/2)
+rel <- c(min(dat$rel), 0, max(dat$rel))
+nd <- expand.grid(cat,con,rel)
+
+nd <- data.frame(cat=c(-1/2,1/2),con=c(0,0),rel=c(0,0))
+
+prob_effect = function(data, digits=3, summary=T, percentage=T){
+  f <-
+  fitted(b5u_norm,
+         newdata = data,
+         summary = FALSE,
+         allow_new_levels = T,
+         sample_new_levels = "gaussian") %>% 
+  as_tibble() %>% 
+  mutate(effect = (V2-V1)/3)
+  if(summary) {
+    effect <- writeCI(c(median(f$effect),quantile(f$effect, p=c(.025,.975))), digits = digits, percentage = percentage)
+    } else {effect <- f$effect}
+  return(effect)
+}
+nd <- data.frame(cat=c(-1/2,1/2),con=c(0,0),rel=c(0,0))
+state_eff <- prob_effect(data=nd, percentage = F)
+state_eff_perc  <- prob_effect(data=nd)
+nd <- data.frame(cat=c(0,0),con=c(-1/2,1/2),rel=c(0,0))
+con_eff <- prob_effect(data=nd)
+nd <- data.frame(cat=c(0,0),con=c(0,0),rel=c(min(dat$rel),max(dat$rel)))
+rel_max_eff <- prob_effect(data=nd)
+nd <- data.frame(cat=c(-1/2,1/2),con=c(0,0),rel=c(max(dat$rel),max(dat$rel)))
+cat_highrel <- prob_effect(nd)
+nd <- data.frame(cat=c(-1/2,1/2),con=c(0,0),rel=c(min(dat$rel),min(dat$rel)))
+cat_lowrel <- prob_effect(nd)
+```
+
+```{r plot-estimates, fig.asp= 1, fig.height = 10, fig.pos = 'H', fig.align = 'center', fig.cap = "Estimated country-level effects (posterior medians) in increasing order. {\\bf a.} state contrast effects. {\\bf b.} religiosity effects. {\\bf c.} framing effects. {\\bf d.} state-by-religiosity interaction effects. {\\bf e.} state-by-framing interaction effects. {\\bf f.} intercepts. Each dot represents a country. Estimates with credible intervals colored in red exclude zero and estimates with credible intervals colored in grey include zero. The errorbars give the 95\\% credible interval for each country. The vertical lines denote the posterior median of the overall mean of the respective effect with the 95\\% credible interval in the shaded bands. The dashed lines indicates zero."}
+plotEst <- function(model, title= NULL, limits = NULL, 
+                    colors = NULL, effect = NULL,
+                    xlab = "State-by-framing effects"){
+  estimates <- coef(model)$site[, "Estimate",effect]
+  mu.estimate <- fixef(model)[effect,"Estimate"]
+  I <- length(estimates)
+  cri <- coef(model)$site[, c("Q2.5","Q97.5"),effect]
+  cri.mu <- fixef(model)[effect,c("Q2.5","Q97.5")]
+  zero.included <- apply(cri,1,function(x) prod(sign(x))<=0)
+  colors <- ifelse(zero.included, "grey36", "slateblue")
+  ordered <- order(estimates)
+  par(mar = c(4.5,5.5,2,0.1))
+  plot(estimates[ordered], 1:I, col = colors[ordered], pch = 19, bty = "n", ylab = "", yaxt = "n",
+     xlab = xlab, main = title, xlim = limits, type="n")
+  polygon(y = c(rev(0.5: (I+0.5)), 0.5: (I+0.5)),
+          x = c(rep(cri.mu[2],(I+1)),rep(cri.mu[1],(I+1))), col = 'grey85', border = NA)
+  abline(v=0, lty=2)
+  lines(x=c(mu.estimate,mu.estimate),y=c(0.5,(I+0.5)),lty=1)
+  arrows(cri[,1][ordered], 1:I, cri[,2][ordered], 1:I, 
+         col = colors[ordered], 
+         code = 3, angle = 90, len = .03, lwd = 1)
+  points(estimates[ordered], 1:I, col = colors[ordered], pch = 19)
+  axis(2, at = 1:I, labels = countries[ordered], las = 1)
+}
+
+plotEst = function(model, options, effect){
+  plotTitle    <- options$title
+  xlab         <- options$xaxislabel
+  ylab         <- ""
+  xLimits      <- options$xLimits
+  yLimits      <- c(1,I)
+  xLimitBreaks <- options$xLimitBreaks
+  xLimitLabels <- options$xLimitLabels
+  colors       <- options$colors
+  xaxisSize    <- options$xaxisSize
+  
+  estimates <- data.frame(coef(model, robust = TRUE)$site[, c("Estimate","Q2.5","Q97.5"),effect])
+  estimates$country <- countries
+  estimates$site <- as.numeric(1:I)
+  estimates$zero_incl <- apply(estimates[,c("Q2.5","Q97.5")],1,function(x) prod(sign(x))<=0)
+  
+  mus <- as.data.frame(t(fixef(model, robust = TRUE)[effect,c("Estimate","Q2.5","Q97.5")]))
+  
+  #estimates$obs <- ind_data[,effect]
+  
+  p <- ggplot() +
+    geom_pointinterval(data = estimates, aes(x = Estimate, y = reorder(country,Estimate), 
+                                             xmin = Q2.5, xmax = Q97.5, color = zero_incl),
+                       point_size = 2, alpha = 0) + 
+    geom_rect(data = mus, aes(xmin = Q2.5, xmax = Q97.5, ymin = 0.5, ymax = I+0.5), alpha = .15, inherit.aes = FALSE) +
+    geom_linerange(data = mus, aes(x = Estimate, ymin = 0.5, ymax = I+0.5)) +
+    geom_vline(xintercept = 0, linetype = "dashed")
+  p <- p + 
+    geom_pointinterval(data = estimates, aes(x = Estimate, y = reorder(country,Estimate), 
+                                             xmin = Q2.5, xmax = Q97.5, color = zero_incl),
+                       point_size = 1.5) +
+    scale_color_manual(name = "", values = colors[1:2], guide = "none") +
+    #geom_point(data = estimates, aes(x = obs, y = reorder(country,Estimate)), 
+    #           shape = 4, color = "black", size = 2) +
+    ggtitle(plotTitle)
+  if(!is.null(xLimitLabels) & !is.null(xLimitBreaks)){
+    
+    p <- p + ggplot2::scale_x_continuous(labels=xLimitLabels, breaks = xLimitBreaks) 
+    
+  } else {
+    p <- p + ggplot2::scale_x_continuous() 
+  }
+
+  ### Theming & Cleaning
+  p <- p +
+    base_breaks_x(xLimits) +
+    base_breaks_y(yLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) + 
+    my_theme() +
+    theme(plot.title = element_text(size = 9),
+          #plot.title.position = "plot",
+          plot.margin = grid::unit(c(0.1, 0, 0, 0), "cm"),
+          axis.text.x = element_text(size = 8),
+          axis.text.y = element_text(size = 8))
+}
+
+cols_mode <- c('slateblue','black')
+options <- list(title          = "a. State effect",
+                xaxislabel     = "",
+                yaxislabel     = '', 
+                xLimits        = c(0,3),
+                xLimitBreaks   = seq(0,3,by=1),
+                xLimitLabels   = c("Body",seq(1,2,by=1),"Mind"),
+                colors         = cols_mode)
+p1 <- plotEst(model = b5u_norm, options=options, effect="cat")
+options$title = "b. Religiosity effect"
+options$xLimits = c(-0.5,2)
+options$xLimitBreaks = seq(-0.5,2,by=0.5)
+options$xLimitLabels = c("Not religious","","0.5","1","","Religious")
+p2 <- plotEst(model = b5u_norm, options=options, effect="rel")
+options$title = "c. Framing effect"
+options$xLimitLabels = c("Secular","","0.5","1","","Religious")
+p3 <- plotEst(model = b5u_norm, options=options, effect="con")
+options$title = "d. State-by-religiosity effect"
+options$xLimits = c(-0.5,1)
+options$xLimitBreaks = seq(-0.5,1,by=0.5)
+options$xLimitLabels = c("Weaker\ndualism",seq(0,0.5,by=0.5),"Stronger\ndualism")
+p4 <- plotEst(model = b5u_norm, options=options, effect="cat:rel")
+options$title = "e. State-by-framing effect"
+options$xLimits = c(-1,0.5)
+options$xLimitBreaks = seq(-1,0.5,by=0.5)
+options$xLimitLabels = c("Weaker\ndualism",seq(-0.5,0,by=0.5),"Stronger\ndualism")
+p5 <- plotEst(model = b5u_norm, options=options, effect="cat:con")
+options$title = "f. Continuity (intercept)"
+options$xLimits = c(-2.5,0.5)
+options$xLimitBreaks = seq(-2.5,0.5,by=0.5)
+options$xLimitLabels = c("Ceases\n","","-1.5","-1","-0.5","","Continues\n")
+p6 <- plotEst(model = b5u_norm, options=options, effect="Intercept")
+
+plot_grid(p1,p2,p3,NULL,p4,p5,p6,NULL, ncol = 4, rel_widths = c(1,1,1,.1))
+
+# for the state-by-religiosity interaction: 
+cri <- coef(b5u_norm)$site[, c("Q2.5","Q97.5"),"cat:rel"]
+zero.included <- apply(cri,1,function(x) prod(sign(x))<=0)
+
+f_coef <- matrix(nrow = I, ncol = 6)
+for(i in 1:I){
+  dd <- subset(dat, country == countries[i])
+  dd$n <- 3
+  f <- glm(prob ~ cat + rel + con + cat:rel + cat:con, data = dd, weights = n, 
+           family = binomial("logit"))
+  f_coef[i,] <- coef(f)
+  if(i==1) colnames(f_coef) <- names(coef(f))
+}
+
+```
+
+```{r exploratory-interactions}
+b6u_norm <- 
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:rel:con +
+        (1 + cat + rel + con + cat:rel + cat:rel:con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel:con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b6u_norm")
+b6c_norm <- 
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + cat:rel:con + 
+        (1 + cat + rel + con + cat:rel| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b6c_norm")
+
+b7u_norm <- 
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + rel:con +
+        (1 + cat + rel + con + cat:rel + rel:con | site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "rel:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel:con", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b7u_norm")
+b7c_norm <- 
+  brm(data = dat, family = binomial,
+      resp | trials(3) ~ 1 + cat + rel + con + cat:rel + rel:con + 
+        (1 + cat + rel + con + cat:rel| site),
+      prior = c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 0.5), class = b, coef = "cat"),
+                prior(normal(0, 0.5), class = b, coef = "rel"),
+                prior(normal(0, 0.5), class = b, coef = "con"),
+                prior(normal(0, 0.5), class = b, coef = "cat:rel"),
+                prior(normal(0, 0.5), class = b, coef = "rel:con"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "rel", group = "site"),
+                prior(normal(0,1), class = sd, coef = "con", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:rel", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE, 
+      file = "models/saved_models/b7c_norm")
+```
+
+```{r bridgesExtra, eval=sample}
+bridge6_norm <- bridge_sampler(b6u_norm)
+bridge6c_norm <- bridge_sampler(b6c_norm)
+bridge7_norm <- bridge_sampler(b7u_norm)
+bridge7c_norm <- bridge_sampler(b7c_norm)
+
+bridgesExtra <- list(bridge6_norm = bridge6_norm, 
+                     bridge6c_norm = bridge6c_norm,
+                     bridge7_norm = bridge7_norm,
+                     bridge7c_norm = bridge7c_norm)
+  
+saveRDS(bridgesExtra, file = "models/saved_models/bridgesExtra.rds")
+```
+
+```{r load-bridgesExtra, eval=(!sample)}
+bridgesExtra <- readRDS(file = "models/saved_models/bridgesExtra.rds")
+bfs6 <- getBFs(bridge0 = bridges_norm$bridge4_norm$logml,
+               bridge1 = bridgesExtra$bridge6c_norm$logml,
+               bridge2 = bridgesExtra$bridge6_norm$logml, 
+               m1 = b6c_norm, m2 = b6u_norm, 
+               param = "cat:rel:con", I = I)
+bf6 <- writeBF(bfs6)
+bf6
+
+bfs7 <- getBFs(bridge0 = bridges_norm$bridge4_norm$logml,
+               bridge1 = bridgesExtra$bridge7c_norm$logml,
+               bridge2 = bridgesExtra$bridge7_norm$logml, 
+               m1 = b7c_norm, m2 = b7u_norm, 
+               param = "rel:con", I = I)
+bf7 <- writeBF(bfs7)
+bf7
+```
+
+```{r plot-threeway, fig.asp= 0.5, fig.height = 5, fig.pos = 'H', fig.align = 'center', fig.cap = "Estimated country-level effects (posterior medians) in increasing order. a. Religion-by-context interaction effects, where positive values indicate more continuity judgments for religious individuals in the religious framing condition. b. State-by-religiosity-by-context threeway interaction effects, where positive values indicate stronger mind-body dualism for religious individuals in the religious framing context. Each dot represents a country. Estimates with credible intervals colored in purple exclude zero and estimates with credible intervals colored in black include zero. The errorbars give the 95\\% credible interval for each country. The vertical lines denote the posterior median of the overall mean of the respective effect with the 95\\% credible interval in the shaded bands. The dashed lines indicates zero."}
+cols_mode <- c('slateblue','black')
+options <- list(title          = "b. State-by-Religiosity-by-Framing",
+                xaxislabel     = "",
+                yaxislabel     = '', 
+                xLimits        = c(-0.6,0.6),
+                xLimitBreaks   = seq(-0.6,0.6,by=0.3),
+                xLimitLabels   = seq(-0.6,0.6,by=0.3),
+                colors         = cols_mode)
+p6 <- plotEst(model = b6u_norm, options=options, effect="cat:rel:con")
+options$title = "a. Religiosity-by-Framing"
+p7 <- plotEst(model = b7u_norm, options=options, effect="rel:con")
+
+plot_grid(p7,p6,NULL,NULL, ncol = 4, rel_widths = c(1,1,1,.1))
+
+
+```

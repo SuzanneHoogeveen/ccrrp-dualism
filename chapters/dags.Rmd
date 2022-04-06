@@ -1,0 +1,125 @@
+---
+title: "DAGs"
+output:
+  pdf_document:
+    papaja::apa6_pdf
+---
+
+## Causal assumptions 
+
+In order to systematically investigate which third variables should and should not be included in the statistical model, we used graphical causal models representing the relations between the variables in our data. As part of the data of interest is observational (e.g., religiosity, demographics), it is important to identify potential confounder variables, `back-door paths', mediators and colliders that may affect causal inference [@rohrer2018thinking; @pearl2019seven; @mcelreath2016statistical]. We identified the following structure based on theoretical assumptions about the measured variables: 
+
+  - continuity judgments of states of a deceased individual are potentially affected by:  
+    - the type of state (mental vs. physical)
+    - the framing of the narrative (religious vs. secular/medical)
+    - country (culture)
+    - education (knowledge of neuroscientific views on death/ mind-body relation)
+    - religion
+    - age (relevance of and personal experience with death of close friends/relatives) 
+  - religion is affected by age, SES, education, gender, and country, sampling strategy
+  - SES is affected by country, education, age, and gender, sampling strategy
+  - education is affected by country, age, and gender, sampling strategy
+  - age is affected by sampling strategy
+  - **The exposure of interest is "religion"**
+  - **The outcome of interest is "continuity judgments"**
+
+Using *directed acyclic graphs* (DAGs; @pearl1995causal) created in the R package `ggdag` [@R-ggdag], this resulted in the following structure: 
+
+```{r 'dag'}
+library(ggdag)
+library(dplyr)
+library(ggplot2)
+dg_1 <- ggdag::dagify(
+  cont ~  state + frame + rel + education + country + age,
+  rel ~  age + ses + education + male + country + sample,
+  ses ~ country + education + age + male + sample,
+  education ~ country + male + sample,
+  age ~ sample, 
+  exposure = "rel",
+  outcome = "cont",
+  labels = c(
+    "cont" = "continuity judgments",
+    "state" = "type of state (mental or physical)",
+    "frame" = "framing (religious vs secular)",
+    "rel" = "religiosity",
+    "country" = "country",
+    "male" = "gender",
+    "ses" = "perceived SES",
+    "education" = "education",
+    "age" = "age",
+    "sample" = "sampling strategy"
+   )
+)
+
+dg_2 <- ggdag::dagify(
+  cont ~  state + frame + rel + education + country + age,
+  rel ~ education + country + age,
+  education ~ country,
+  exposure = "rel",
+  outcome = "cont",
+  labels = c(
+    "cont" = "continuity judgments",
+    "state" = "type of state (mental or physical)",
+    "frame" = "framing (religious vs secular)",
+    "rel" = "religiosity",
+    "country" = "country",
+    "education" = "education",
+    "age" = "age"
+   )
+)
+```
+
+```{r graph, layout="l-body-outset",  fig.height=5, fig.width=8}
+# Graph model
+p1b <-ggdag(dg_1, text = FALSE, use_labels = "label") + theme_dag_blank() + labs(title = "Causal Model")
+p1b
+```
+
+```{r 'adjustset', layout="l-body-outset",  fig.height=5, fig.width=8}
+library("ggsci")
+# find adjustment set
+p2 <-ggdag::ggdag_adjustment_set(
+  dg_1,
+  exposure = "rel",
+  outcome = "cont",
+  text = FALSE,
+  use_labels  = "label"
+) +
+  theme_dag_blank() +
+  #scale_color_brewer(palette="Dark2") + 
+  #scale_fill_brewer(palette="Dark2") + 
+  scale_color_npg() +
+  scale_fill_npg() +
+  labs(title = "Adjustment set",
+  subtite = "Model for continuity judgments from religiosity")
+p2
+``` 
+Thus, conditional on the assumed model, we should include *country*, *education*, and *age* as covariates or adjustment variables. So, rather than 'controlling for' all indicators that could affect either the predictor or outcome of interest, we only adjusted for the indicators that are needed for causal inference. As drawn in Figure \@ref(fig:colliders), in the large model, many covariates are identified as colliders; including those may introduce spurious associations and bias the relation of interest between religiosity and continuity judgments. In the adjusted model, none of the remaining covariates are colliders, making conditioning on country, age, and education valid inference choices. 
+
+```{r 'colliders', echo = FALSE, layout="l-body-outset",  fig.height=8, fig.width=10}
+p3 <-ggdag_collider(dg_1,
+  text = FALSE,
+  use_labels  = "label"
+) +
+  labs(title = "   Lurking Colliders Large Model") + 
+  theme_dag_blank() +
+  scale_color_npg() +
+  scale_fill_npg()
+
+p4 <- ggdag_collider(dg_2,
+  text = FALSE,
+  use_labels  = "label"
+) +
+  labs(title = "   Lurking Colliders Adjusted Model") + 
+  theme_dag_blank() +
+  scale_color_npg() +
+  scale_fill_npg()
+
+cowplot::plot_grid(p3, p4,
+                   nrow = 2, 
+                   labels = c("a","b"),
+                   label_fontface = "plain", 
+                   rel_heights = c(4,3))
+```
+
+

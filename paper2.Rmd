@@ -1,0 +1,686 @@
+---
+title             : "A cross-cultural investigation of mind-body dualism"
+shorttitle        : "mind-body dualism"
+
+author: 
+  - name          : "Suzanne Hoogeveen"
+    affiliation   : "1"
+    corresponding : yes    # Define only one corresponding author
+    address       : "Department of Psychology, University of Amsterdam, Room 2.34, Nieuwe Achtergracht 129, 1018 WS Amsterdam, The Netherlands"
+    email         : "suzanne.j.hoogeveen@gmail.com"
+  - name          : "Michiel van Elk"
+    affiliation   : "2"
+        
+affiliation:
+  - id            : "1"
+    institution   : "University of Amsterdam"
+  - id            : "2"
+    institution   : "Leiden University"
+
+authornote: |
+  Analysis code will be provided at \href{https://osf.io/...}{https://osf.io/...}. 
+
+abstract: |
+  Great study! Beautiful results. 
+  
+keywords          : "Religion, Mind-body, Dualism, Cross-cultural, Afterlife beliefs"
+wordcount         : "X"
+
+bibliography      : ["../../../MyBibs.bib","r-references.bib"]
+
+floatsintext      : no
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+linenumbers       : no
+mask              : no
+draft             : no
+urlcolor          : blue
+
+documentclass     : "apa6"
+classoption       : "man"
+header-includes   :
+   - \usepackage{bm}
+   - \usepackage{amsmath}
+   - \usepackage{setspace}
+output: 
+  papaja::apa6_pdf:
+#    includes:
+#    after_body: "prior_sensitivity.tex"
+csl               : apa6.csl
+#appendix          : "chapters/prior_sensitivity.Rmd"
+---
+\newcommand{\calM}{\mathcal M}
+\newcommand{\calH}{\mathcal H}
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+library("papaja")
+library("MCMCpack") # riwish() function
+library("invgamma") # rinvgamma() function
+library("scales") # plotting function alpha() for the colors
+library("dplyr") # data wrangling
+library("brms") # posterior_samples() function to extract draws from stanmodel
+library("rstan") # cross-check of Gibbs sampler and modeling in part two
+library("cmdstanr") # faster stan models
+library("tidyr") # for data wrangling for posterior pred checks
+library("gridExtra") # plot arrangement posterior pred checks
+library("posterior")
+library("bridgesampling")
+library("tidybayes")
+library("kableExtra")
+library("BayesFactor")
+library("ggsci")
+library("ggdist")
+library("cowplot")
+library("ggmosaic")
+rstan_options(auto_write = TRUE) #  Cache compiled Stan programs
+options(mc.cores = parallel::detectCores()) # Parallelize chains
+
+sample=FALSE
+source("chapters/helperfunctions.R")
+```
+
+```{r analysis-preferences}
+# Seed for random number generation
+set.seed(2021)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed, cache.lazy = FALSE)
+r_refs(file = "r-references.bib", append = FALSE)
+my_citations <- cite_r(file = "r-references.bib")
+mycols = c("steelblue","firebrick")
+```
+
+```{r load-data}
+### prep data 
+mydata <- read.csv(file = 'data/DataStudy4_Dualism.csv')
+# select relevant columns
+dat <- mydata %>% 
+  dplyr::select(country, hunger, hearing, brains, knowledge, love, 
+                desire, religiosity.s, condition, subject) %>%
+  mutate(mind = knowledge+love+desire,
+         body = hunger+hearing+brains) %>%
+  pivot_longer(cols = mind:body, names_to = 'state', values_to = 'resp') %>%
+  mutate(cat = ifelse(state == 'body', -1/2, 1/2),
+         con = ifelse(condition == "Secular", -1/2, 1/2),
+         rel = religiosity.s,
+         group = as.numeric(as.factor(paste(condition,cat))),
+         religiosity.s = NULL,
+         site = as.numeric(as.factor(country))) %>%
+  dplyr::select(country,subject,cat,con,rel,group,site,resp) %>%
+  arrange(subject)
+
+countries <- unique(dat$country)
+I <- length(unique(dat$site))
+
+dat_long <- mydata %>% 
+  dplyr::select(country, hunger, hearing, brains, knowledge, love, desire, religiosity.s, condition, subject) %>%
+  gather(state, resp, hunger:desire, factor_key = T) %>%
+  mutate(cat = ifelse(state %in% c("hunger","hearing","brains"), -1/2, 1/2),
+         con = ifelse(condition == "Secular", -1/2, 1/2),
+         rel = religiosity.s,
+         site = as.numeric(as.factor(country)),
+         group = as.numeric(as.factor(paste(condition,cat))),
+         religiosity.s = NULL) %>%
+  arrange(subject)
+```
+
+# Methods
+We report how we determined our sample size, all data exclusions (if any), all manipulations, and all measures in the study. <!-- 21-word solution (Simmons, Nelson & Simonsohn, 2012; retrieved from http://ssrn.com/abstract=2160588) -->
+
+```{r methods, child='chapters/methods.Rmd'}
+```
+
+# Results
+
+```{r results, child='chapters/results.Rmd'}
+```
+
+On average, people made continuity judgments for `r mean(dat$resp)/3*100`% of the states, with `r cont_phys*100`% for physical states and `r cont_mind*100`% for mental states. 
+In Figure \@ref(fig:descriptives-plot)A these observed rates are further unpacked per context condition and level of religiosity. Additionally, `r printnum(100-as.numeric(cont_once[1])*100)`% of participants judged none of the states to continue after death, while `r printnum(as.numeric(cont_once[2])*100)`% reported all six states to continue. 
+
+As can be seen in Table \@ref(tab:BFtable), we found substantial evidence in favor of our hypotheses for the state effect ($\calH_1$), the religiosity effect ($\calH_2$), the context effect ($\calH_3$), and the state-by-religiosity interaction effect ($\calH_4$), yet strong evidence against the state-by-context effect ($\calH_5$).
+
+First, mental processes are judged as more likely to continue after death than psychobiological processes, to a varying degree across countries: BF$_{+0} =$ `r printBFab(bfs1[3],bfs1[1])`; BF$_{+1} =$ `r printBFab(bfs1[3],bfs1[2])`, $\mu_{\beta}=$ `r writeCI(sd_norm["b_cat",],digits=2)`, $\sigma_{\beta}=$ `r writeCI(sd_norm['sd_site__cat',],digits=2)`. This effect translates into an increase of `r state_eff` on the probability scale. Second, religiosity is positively associated with continuity judgments, to a varying degree across countries: BF$_{+0} =$ `r printBFab(bfs2[3],bfs2[1])`; BF$_{+1} =$ `r printBFab(bfs2[3],bfs2[2])`, $\mu_{\delta}=$ `r writeCI(sd_norm["b_rel",],digits=2)`, $\sigma_{\delta}=$ `r writeCI(sd_norm['sd_site__rel',],digits=2)`. In other words, the most religious participants are `r rel_max_eff` more likely to make continuity judgments than the least religious participants. Third, people are more likely to make continuity judgments in a religious context than in a secular (medical) context, to a varying degree across countries: BF$_{+0} =$ `r printBFab(bfs3[3],bfs3[1])`; BF$_{+1} =$ `r printBFab(bfs3[3],bfs3[2])`, $\mu_{\gamma}=$ `r writeCI(sd_norm["b_con",],digits=2)`, $\sigma_{\gamma}=$ `r writeCI(sd_norm['sd_site__con',],digits=2)`. That is, people are `r con_eff` more likely to make continuity judgments in the religious context than in the secular context. Fourth, the difference in continuity judgments between mental and physical states becomes larger with increased religiosity, to a varying degree across countries: BF$_{10} =$ `r printBFab(bfs4[2],bfs4[1])`; BF$_{+1} =$ `r printBFab(bfs4[3],bfs4[2])`, $\mu_{\theta}=$ `r writeCI(sd_norm["b_cat:rel",],digits=2)`, $\sigma_{\theta}=$ `r writeCI(sd_norm['sd_site__cat:rel',],digits=2)`. That is, overall, the most religious participants make an estimated `r cat_highrel` more continuity judgments about mental processes than about physical processes, while this difference is only `r cat_lowrel` for the least religious participants. Note, however, that while the model comparison indicated substantial evidence for the interaction effect, the unconstrained model slightly outperforms the positive-effects model: BF$_{u+} =$ `r printBFab(bfs4[4],bfs4[3])`. This is due to the fact that when looking at the countries separately, for `r sum(zero.included)` of them, the credible interval of the interaction effect does include zero (see Figure XXX). Fifth, the difference in continuity judgments between mental and physical states is not larger in a religious than in a secular context: BF$_{01} =$ `r printBFab(bfs5[1],bfs5[2])`, $\mu_{\zeta}=$ `r writeCI(sd_norm["b_cat:con",],digits=2)`, $\sigma_{\zeta}=$ `r writeCI(sd_norm['sd_site__cat:con',],digits=2)`.  
+
+At the same time, the modal response across most countries is complete cessation rather than continuity: in only `r length(modes$country[modes$modal>0])` out of 24 countries, the modal sum score across the six items was either 3 or 4, in all other countries it was 0. Specifically, in `r paste0(modes$country[modes$modal>0], collapse=", ")` participants were more likely to indicate continuity of some states than complete cessation. Across the aggregated sample, the mode is also complete cessation. 
+
+### Country-level cultural norms  
+Correlation between country-level intercepts and state effects with aggregated cultural norms of religion? 
+
+```{r corr-norms, fig.width = 8, fig.height = 5, fig.align = 'center', fig.pos="H", fig.cap="Correlation between country-level cultural norms of religion and continuity judgments (panel A.) and mind-body dualism (i.e., state effects; panel B.)."}
+norms_c <- aggregate(mydata$norms_z, by = list(mydata$country), unique)
+colnames(norms_c) <- c('country','norms')
+alphas <- coef(b5u_norm)$site[, "Estimate","Intercept"]
+betas  <- coef(b5u_norm)$site[, "Estimate","cat"]
+
+bf_norm_alpha <- as.vector(correlationBF(y = norms_c$norms, x = alphas, nullInterval = c(0,1)))[1]
+bf_norm_beta  <- as.vector(correlationBF(y = norms_c$norms, x = betas,  nullInterval = c(0,1)))[1]
+
+samp_norm_alpha <- correlationBF(y = norms_c$norms, x = alphas, posterior = TRUE, 
+                                iterations = iterations)[,'rho']
+samp_norm_beta <- correlationBF(y = norms_c$norms, x = betas, posterior = TRUE, 
+                                iterations = iterations)[,'rho']
+
+plot_norms <- function(d2, options, bf, cor){
+  xlab = options$xaxislabel
+  ylab = options$yaxislabel
+  xLimits = options$xLimits
+  yLimits = options$yLimits
+  xLegend = options$positionLegend[1]
+  yLegend = options$positionLegend[2]
+  plotTitle = options$title
+  
+  cl = 'black'
+  p <- ggplot(d2, aes(x=est.b, y=est.a, ymin=lower.a, ymax=upper.a)) +
+    stat_smooth(method = lm, formula = y ~ x, color = 'grey36', alpha = .2, fullrange = T, size=.5) +
+    geom_pointrange(shape=16, color=cl, size=.5) +
+    ggrepel::geom_label_repel(aes(label = country), size=2.5, segment.color = 'grey',label.padding = .15) + 
+    scale_y_continuous(breaks=seq(yLimits[1],yLimits[2],by=0.5)) +
+    ggtitle(plotTitle)
+  
+  lab1 <- bquote(paste(rho, " = ", .(cor)))
+  lab2 <- bquote(paste(BF[+0], " = ", .(bf %>% as.numeric())))
+
+  p <- p +
+    annotate("text", y=yLegend, x=xLegend, label=deparse(lab1), parse=T, hjust=0) +
+    annotate("text", y=yLegend-.15, x=xLegend, label=deparse(lab2), parse=T, hjust=0)
+  
+  p <- p +
+    base_breaks_x(xLimits) +
+    base_breaks_y(yLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) +
+    my_theme() +
+    theme(plot.title = element_text(size=12))
+  return(p)
+}
+
+# plot with betas (+ci) and norms 
+cntr = c("AU","BE","BR","CA","CL","CN","HR","DK","FR","DE","IN","IE","IL","IT","JP","LT","MA","NL","RO","SG","ES","TR","UK","US")
+d2 <- data.frame(country=cntr, est.a=alphas, lower.a=coef(b5u_norm)$site[,'Q2.5','Intercept'], 
+                 upper.a=coef(b5u_norm)$site[,'Q97.5','Intercept'], est.b = norms_c$norms)
+corrie <- writeCI(quantile(samp_norm_alpha,p=c(.5,.025,.975)),digits = 2)
+bf_lab <- round(bf_norm_alpha,2)
+
+options <- list(xLimits=range(pretty(range(d2$est.b))), 
+                yLimits=range(pretty(c(min(d2$lower.a),max(d2$upper.a)))),
+                xaxislabel = "Cultural norms of religiosity (z-score)", 
+                yaxislabel = "Continuity judgments", 
+                positionLegend = c(0.5, 0.5),
+                title = "A. Correlation Continuity and Cultural Norms"
+)
+
+p_norms_alpha <- plot_norms(d2, options, cor = corrie, bf=bf_lab)
+
+d2 <- data.frame(country=cntr, est.a=betas, lower.a=coef(b5u_norm)$site[,'Q2.5','cat'], 
+                 upper.a=coef(b5u_norm)$site[,'Q97.5','cat'], est.b = norms_c$norms)
+corrie <- writeCI(quantile(samp_norm_beta,p=c(.5,.025,.975)),digits = 2)
+bf_lab <- round(bf_norm_beta,2)
+options <- list(xLimits=range(pretty(range(d2$est.b))), 
+                yLimits=range(pretty(c(min(d2$lower.a),max(d2$upper.a)))),
+                xaxislabel = "Cultural norms of religiosity (z-score)", 
+                yaxislabel = "Mind-body dualism (state effect)", 
+                positionLegend = c(0.5, 3),
+                title = "B. Correlation Dualism and Cultural Norms"
+)
+p_norms_beta <- plot_norms(d2, options, cor = corrie, bf=bf_lab)
+gridExtra::grid.arrange(p_norms_alpha,p_norms_beta, ncol=2)
+```
+Mirroring the religiosity effect at the individual level, we expected a *positive* relation between both the overall continuity judgments and cultural norms of religion and between mind-body dualism operationalized as the state effect and cultural norms of religion. To investigate this effect, we correlated cultural norms aggregated at the country-level with country-level estimates of the intercepts ($\alpha_j$) and state-effects ($\beta_j$) in the models. 
+First, we find some anecdotal evidence against a positive correlation between the country-level overall probability of continuity and cultural norms of religion: BF$_{+0}=$ `r bf_norm_alpha`; BF$_{0+}=$ `r 1/bf_norm_alpha`.
+Second, we also obtained moderate evidence against a positive correlation between country-level estimates of dualism (i.e., the state effect) and cultural norms of religiosity aggregated at the country-level: BF$_{+0}=$ `r bf_norm_beta`; BF$_{0+}=$ `r 1/bf_norm_beta` (see Figure \@ref(fig:corr-norms)). In fact, if anything, the correlation appears to be negative, rather than positive; the estimated size of the correlation coefficient is `r writeCI(x=c(median(samp_norm_beta),quantile(samp_norm_beta, p=c(.025,.975))))`.\footnote{If we release the directional constraint, we get strong evidence in favor of a correlation: BF$_{10}$= `r as.vector(correlationBF(y = norms_c$norms, x = betas))`.}. This suggests that participants from countries where religion is more normative are *not* more likely to make continuity judgments or reason dualistically. Instead, in more religious countries, people may be less likely to distinguish between physical and mental states. 
+
+### Correlation explicit afterlife beliefs
+Afterlife beliefs as a predictor of intercepts and state effects (individual level). 
+To test the hypothesis that explicit afterlife beliefs are related to both overall continuity judgments and mind-body dualism, we constructed the models used to test H2 with the item on afterlife beliefs as the predictor. 
+
+```{r afterlife}
+dat_aft <- mydata %>% 
+  dplyr::select(country, hunger, hearing, brains, knowledge, love, 
+                desire, R_afterlife, subject) %>%
+  mutate(mind = knowledge+love+desire,
+         body = hunger+hearing+brains, 
+         aft = scale(R_afterlife, center = T, scale = T)[,1]) %>%
+  pivot_longer(cols = mind:body, names_to = 'state', values_to = 'resp') %>%
+  mutate(cat = ifelse(state == 'body', -1/2, 1/2),
+         site = as.numeric(as.factor(country))) %>%
+  dplyr::select(country,subject,cat,aft,site,resp) %>%
+  arrange(subject)
+b4u_aft <-
+  brm(data = dat_aft, family = binomial,
+      resp | trials(3) ~ 1 + cat + aft + cat:aft + 
+        (1 + cat + aft + cat:aft| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0,1), class = b, coef = "cat"),
+                prior(normal(0,1), class = b, coef = "aft"),
+                prior(normal(0,1), class = b, coef = "cat:aft"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "aft", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:aft", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "chapters/models/saved_models/b4u_aft")
+b4c_aft <-
+  brm(data = dat_aft, family = binomial,
+      resp | trials(3) ~ 1 + cat + aft + cat:aft + 
+        (1 + cat + aft | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0,1), class = b, coef = "cat"),
+                prior(normal(0,1), class = b, coef = "aft"),
+                prior(normal(0,1), class = b, coef = "cat:aft"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "aft", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "chapters/models/saved_models/b4c_aft")
+b2u_aft <-
+  brm(data = dat_aft, family = binomial,
+      resp | trials(3) ~ 1 + cat + aft + 
+        (1 + cat + aft| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0,1), class = b, coef = "cat"),
+                prior(normal(0,1), class = b, coef = "aft"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "aft", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "chapters/models/saved_models/b2u_aft")
+b2c_aft <-
+  brm(data = dat_aft, family = binomial,
+      resp | trials(3) ~ 1 + cat + aft + 
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 1), class = b, coef = "cat"),
+                prior(normal(0, 1), class = b, coef = "aft"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "chapters/models/saved_models/b2c_aft")
+```
+
+```{r bridge-afterlife, eval=sample}
+bridge4u_aft <- bridge_sampler(b4u_aft)
+bridge4c_aft <- bridge_sampler(b4c_aft)
+bridge2u_aft <- bridge_sampler(b2u_aft)
+bridge2c_aft <- bridge_sampler(b2c_aft)
+#save bridgesampling objects, so they can be reloaded
+bridges_aft <- list(bridge2c_aft=bridge2c_aft, bridge2u_aft=bridge2u_aft, 
+                    bridge4c_aft=bridge4c_aft, bridge4u_aft=bridge4u_aft)
+saveRDS(bridges_aft, file = "chapters/models/saved_models/bridges_afterlife.rds")
+```
+
+```{r load-bridges-aft, eval=(!sample)}
+bridges_aft <- readRDS(file = "chapters/models/saved_models/bridges_afterlife.rds")
+```
+
+```{r bfs-aft}
+bfs2_aft <- getBFs(bridge0 = bridges_norm$bridge1_norm$logml,
+               bridge1 = bridges_aft$bridge2c_aft$logml,
+               bridge2 = bridges_aft$bridge2u_aft$logml, 
+               m1 = b2c_aft, m2 = b2u_aft, 
+               param = "aft", I = I)
+bfs4_aft <- getBFs(bridge0 = bridges_aft$bridge2u_aft$logml,
+               bridge1 = bridges_aft$bridge4c_aft$logml,
+               bridge2 = bridges_aft$bridge4u_aft$logml, 
+               m1 = b4c_aft, m2 = b4u_aft, 
+               param = "cat:aft", I = I)
+bf2_aft <- writeBF(bfs2_aft)
+bf4_aft <- writeBF(bfs4_aft)
+# estimates 
+vars <- get_variables(b4u_aft)[c(2:4,6:8)]
+sd_aft <- posterior_summary(b4u_aft, robust=TRUE, variable = vars)[,c(1,3,4)]
+estimates_aft <- apply(sd_aft,1,writeCI)
+```
+
+The Bayes factor analysis provided strong evidence that explicit afterlife beliefs are positively related to both the overall probability of making continuity judgments, to a varying degree across countries (BF$_{+0}=$`r specify_decimalBF(exp(bfs2_aft[3]-bfs2_aft[1]))`; BF$_{+1}=$ `r specify_decimalBF(exp(bfs2_aft[3]-bfs2_aft[2]))` , $\mu_{\delta}=$ `r writeCI(sd_aft["b_aft",],digits=2)`, $\sigma_{\delta}=$ `r writeCI(sd_aft['sd_site__aft',],digits=2)`). In addition, afterlife beliefs were also related to the tendency to differentiate between mental and physical states, to a varying degree across countries (BF$_{+0}=$ `r specify_decimalBF(exp(bfs4_aft[3]-bfs4_aft[1]))`; BF$_{+1}=$ `r specify_decimalBF(exp(bfs4_aft[3]-bfs4_aft[2]))`, $\mu_{\theta}=$ `r writeCI(sd_aft["b_cat:aft",],digits=2)`, $\sigma_{\theta}=$ `r writeCI(sd_aft['sd_site__cat:aft',],digits=2)`). 
+
+```{r explicit-implicit-rates, fig.cap="Categorization of individuals with respect to the presence of implicit and explicit afterlife beliefs. The presence of implicit afterlife beliefs is operationalized as states that at least one state continues in the narrative task. The presence of explicit afterlife beliefs is operationalized as a score of 2 or higher on the 7-point Likert scale asking about belief in life after death."}
+mydata$implicit.beliefs <- ifelse(rowSums(mydata[,c('hunger','brains','hearing','knowledge','desire','love')]) > 0, 1, 0)
+mydata$explicit.beliefs <- ifelse(mydata$R_afterlife > 0, 1, 0)
+counts <- MESS::round_percent(table(mydata$implicit.beliefs, mydata$explicit.beliefs)/nrow(mydata)*100, decimals = 1)
+
+dimnames(counts) <- list(Implicit = c("no","yes"),
+                         Explicit = c("no","yes"))
+
+counts <- counts %>% as_tibble()
+
+counts$class <- c("Consistent","Inonsistent","Inonsistent","Consistent")
+counts$cols <- c("grey","slateblue","slateblue","grey")
+
+p <- ggplot(counts) +
+  geom_mosaic(aes(weight = n, x = product(Implicit,Explicit), fill = class), alpha=0) +
+  geom_mosaic(aes(weight = n, x = product(Implicit,Explicit)), fill = counts$cols) +
+  scale_y_productlist() + 
+  scale_fill_manual(name = "", 
+                    values = unique(counts$cols), 
+                    breaks = unique(counts$class)) +
+  guides(fill = guide_legend(override.aes = list(alpha = 0.8))) +
+  scale_x_productlist(breaks = counts %>%
+                        group_by(Explicit) %>%
+                        summarise(sumer = sum(n)) %>%
+                        mutate(sumer = cumsum(sumer/sum(sumer)),
+                               lag = lag(sumer)) %>%
+                        replace(is.na(.), 0) %>%
+                        rowwise() %>%
+                        mutate(post = sum(sumer, lag)/2) %>%
+                        select(post) %>%
+                        unlist(), labels = unique(counts$Explicit))
+p <- p +
+    ggplot2::xlab("Explicit afterlife beliefs") +
+    ggplot2::ylab("Implicit afterlife beliefs") + 
+    my_theme() +
+    theme(plot.title = element_text(size = 9),
+          legend.position = "right",
+          plot.margin = grid::unit(c(0.1, 0, 0, 0), "cm"),
+          axis.text.x = element_text(size = 11, vjust = 4),
+          axis.text.y = element_text(size = 11, hjust = 2),
+          axis.ticks.length = unit(0,"cm"))
+df2 <- ggplot_build(p)$data[[1]]
+df2 <- df2[df2$.wt>0,]
+df2$counts <- c(table(mydata$implicit.beliefs, mydata$explicit.beliefs))
+df2$lab <- paste0(df2$counts, " (",df2$.wt,"%)")
+
+p <- p + 
+  geom_label(data = df2 %>% as_tibble(), aes(x = (xmin+xmax)/2, y = (ymin+ymax)/2, label = lab))
+
+#p
+
+```
+
+So yes, even atheist extinctivists make continuity judgments, and if they do it's mostly for mental states. But at the same time, the proportion of people that display these implicit afterlife beliefs in the absence of explicit afterlife beliefs is much smaller than the proportion of people endorsing explicit afterlife beliefs but implicitly rejecting continuity in an afterlife. That is, most people in the sample indicate to at least somewhat believe in an afterlife and rate at least one state to continue in the narrative task (`r printnum(counts[2,2], digits=1)`%). About 20% of participants both explicitly and implicitly reject the possibility of an afterlife (`r printnum(counts[1,1], digits=1)`%). Then there are `r printnum(counts[1,2], digits=1)`% who explicitly state to somewhat believe in an afterlife, but implicitly reject continuity of any states. Yet only `r printnum(counts[2,1], digits=1)`% of participants explicitly reject an afterlife but implicitly allow for states to continue after death. This suggests that explicit afterlife beliefs may be more common than implicit ones, which seems problematic for intuitive dualism accounts that assume that especially implicit afterlife beliefs are prevalent and widespread. 
+
+### Pictorial dualism item 
+Pictorial item as predictor of intercepts and state effect (individual level). 
+
+```{r pictorial}
+dat_pic <- mydata %>% 
+  dplyr::select(country, hunger, hearing, brains, knowledge, love, 
+                desire, self_rating, subject) %>%
+  mutate(mind = knowledge+love+desire,
+         body = hunger+hearing+brains, 
+         pic = scale(self_rating, center = T, scale = T)[,1]) %>%
+  pivot_longer(cols = mind:body, names_to = 'state', values_to = 'resp') %>%
+  mutate(cat = ifelse(state == 'body', -1/2, 1/2),
+         site = as.numeric(as.factor(country))) %>%
+  dplyr::select(country,subject,cat,pic,site,resp) %>%
+  arrange(subject)
+b4u_pic <-
+  brm(data = dat_pic, family = binomial,
+      resp | trials(3) ~ 1 + cat + pic + cat:pic + 
+        (1 + cat + pic + cat:pic| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0,1), class = b, coef = "cat"),
+                prior(normal(0,1), class = b, coef = "pic"),
+                prior(normal(0,1), class = b, coef = "cat:pic"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "pic", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat:pic", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "chapters/models/saved_models/b4u_pic")
+b4c_pic <-
+  brm(data = dat_pic, family = binomial,
+      resp | trials(3) ~ 1 + cat + pic + cat:pic + 
+        (1 + cat + pic | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0,1), class = b, coef = "cat"),
+                prior(normal(0,1), class = b, coef = "pic"),
+                prior(normal(0,1), class = b, coef = "cat:pic"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "pic", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "chapters/models/saved_models/b4c_pic")
+b2u_pic <-
+  brm(data = dat_pic, family = binomial,
+      resp | trials(3) ~ 1 + cat + pic + 
+        (1 + cat + pic| site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0,1), class = b, coef = "cat"),
+                prior(normal(0,1), class = b, coef = "pic"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(normal(0,1), class = sd, coef = "pic", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "chapters/models/saved_models/b2u_pic")
+b2c_pic <-
+  brm(data = dat_pic, family = binomial,
+      resp | trials(3) ~ 1 + cat + pic + 
+        (1 + cat | site),
+      c(prior(normal(0, 1), class = Intercept),
+                prior(normal(0, 1), class = b, coef = "cat"),
+                prior(normal(0, 1), class = b, coef = "pic"),
+                prior(normal(0,1), class = sd, coef = "Intercept", group = "site"),
+                prior(normal(0,1), class = sd, coef = "cat", group = "site"),
+                prior(lkj(2), class = cor, group = "site")),
+      iter = iterations, warmup = 500, chains = 4, cores = 4,
+      save_pars = save_pars(all = TRUE),
+      seed = 2022, backend = "cmdstanr", sample_prior = TRUE,
+      file = "chapters/models/saved_models/b2c_pic")
+```
+
+```{r bridge-pictorial, eval=sample}
+bridge4u_pic <- bridge_sampler(b4u_pic)
+bridge4c_pic <- bridge_sampler(b4c_pic)
+bridge2u_pic <- bridge_sampler(b2u_pic)
+bridge2c_pic <- bridge_sampler(b2c_pic)
+#save bridgesampling objects, so they can be reloaded
+bridges_pic <- list(bridge2c_pic=bridge2c_pic, bridge2u_pic=bridge2u_pic, 
+                    bridge4c_pic=bridge4c_pic, bridge4u_pic=bridge4u_pic)
+saveRDS(bridges_pic, file = "chapters/models/saved_models/bridges_pictorial.rds")
+```
+
+```{r load-bridges-pic, eval=(!sample)}
+bridges_pic <- readRDS(file = "chapters/models/saved_models/bridges_pictorial.rds")
+```
+
+```{r bfs-pic}
+bfs2_pic <- getBFs(bridge0 = bridges_norm$bridge1_norm$logml,
+               bridge1 = bridges_pic$bridge2c_pic$logml,
+               bridge2 = bridges_pic$bridge2u_pic$logml, 
+               m1 = b2c_pic, m2 = b2u_pic, 
+               param = "pic", I = I)
+bfs4_pic <- getBFs(bridge0 = bridges_pic$bridge2u_pic$logml,
+               bridge1 = bridges_pic$bridge4c_pic$logml,
+               bridge2 = bridges_pic$bridge4u_pic$logml, 
+               m1 = b4c_pic, m2 = b4u_pic, 
+               param = "cat:pic", I = I)
+bf2_pic <- writeBF(bfs2_pic)
+bf4_pic <- writeBF(bfs4_pic)
+# estimates 
+vars <- get_variables(b4u_pic)[c(2:4,6:8)]
+sd_pic <- posterior_summary(b4u_pic, robust=TRUE, variable = vars)[,c(1,3,4)]
+estimates_pic <- apply(sd_pic,1,writeCI)
+cri_pic <- coef(b2u_pic)$site[, c("Q2.5","Q97.5"),"pic"]
+zero.included.pic <- apply(cri_pic,1,function(x) prod(sign(x))<=0)
+cri_pic_int <- coef(b4u_pic)$site[, c("Q2.5","Q97.5"),"cat:pic"]
+zero.included.pic.int <- apply(cri_pic_int,1,function(x) prod(sign(x))<=0)
+```
+
+The pictorial dualism item was taken from @forstmann2012mind, which was adjusted from the self-other inclusion scale by @aron1992. While we find evidence that dualism as measured with the pictorial item is related to overall continuity ratings, BF$_{10}=$ `r specify_decimalBF(exp(bfs2_pic[2]-bfs2_pic[1]))`, we do not find a robust pattern across all countries. That is, we get most evidence in favor of the unconstrained model:  BF$_{u1}=$ `r specify_decimalBF(exp(bfs2_pic[4]-bfs2_pic[2]))`, $\mu_{\delta}=$ `r writeCI(sd_pic["b_pic",],digits=2)`, $\sigma_{\delta}=$ `r writeCI(sd_pic['sd_site__pic',],digits=2)` and in `r sum(zero.included.pic)` out of the 24 countries, the credible interval for the pictorial item as predictor includes zero. 
+Additionally, the Bayes factor model comparison gave evidence against the pictorial item predicting mind-body dualism operationalized as the difference in continuity between mental and physical states: BF$_{10}=$ `r specify_decimalBF(exp(bfs4_pic[2]-bfs4_pic[1]))`; BF$_{01}=$ `r specify_decimalBF(exp(bfs4_pic[1]-bfs4_pic[2]))`, $\mu_{\theta}=$ `r writeCI(sd_pic["b_cat:pic",],digits=2)`, $\sigma_{\theta}=$ `r writeCI(sd_pic['sd_site__cat:pic',],digits=2)`). 
+
+### Robustness checks
+In the preregistration, we specified half-cauchy priors on the standard deviation. However, the prior predictive checks showed that the fat tails of the cauchy distribution resulted in implausible predictions on the probability scale (see the Appendix for details). Following recommendations by @mcelreath2016statistical and @stanpriors2015, we used the half-normal(0,1) prior on the country-level standard deviation instead. This resulted in more reasonable prior predictions (see Appendix). 
+
+1. hearing as a mental state
+2. manipulation check failures excluded
+3. level of education as covariate
+4. Lithuania excluded (as preregistered)
+5. cauchy priors on the between-country variance (as preregistered)
+
+```{r robustness, child='chapters/robustness_checks.Rmd'}
+```
+
+
+## Exploratory Results
+
+### Atheist extinctivists
+
+```{r atheists, child='chapters/results-atheists.Rmd'}
+```
+
+In addition to these overall effects, we can also look specifically at self-reported atheists who explicitly state "not at all" to believe in life after death ($n=$ `r length(unique(dat_non$subject))`). Among this group, people made continuity judgments for `r mean(dat_non$resp)/3*100`% of the states, with `r cont_phys_ath*100`% for physical states and `r cont_mind_ath*100`% for mental states. Additionally, `r printnum(100-as.numeric(cont_once_ath[1])*100)`% of atheist extinctivists judged none of the states to continue after death, while `r printnum(as.numeric(cont_once_ath[2])*100)`% reported all six states to continue. 
+
+As expected, for atheist extinctivists, the estimated intercept is considerably lower than for the overall sample: `r fixef(b5u_ath, robust=TRUE)['Intercept','Estimate']` (`r fixef(b5u_ath, robust=TRUE)['Intercept','Estimate'] %>% inv_logit_scaled()*100`%) vs. `r fixef(b5u_norm, robust=TRUE)['Intercept','Estimate']` (`r fixef(b5u_norm, robust=TRUE)['Intercept','Estimate'] %>% inv_logit_scaled()*100`%), respectively, as is the effect of mental versus physical state: `r fixef(b5u_ath, robust=TRUE)['cat','Estimate']` (i.e., an increase of `r strsplit(state_eff_ath, " ")[[1]][1]` on the probability scale) vs. `r fixef(b5u_norm, robust=TRUE)['cat','Estimate']` (i.e., an increase of `r strsplit(state_eff_perc, " ")[[1]][1]` on the probability scale) and the effect of religious vs. secular context: `r fixef(b5u_ath, robust=TRUE)['con','Estimate']` (i.e., an increase of `r strsplit(con_eff_ath, " ")[[1]][1]` on the probability scale) vs. `r fixef(b5u_norm, robust=TRUE)['con','Estimate']` (i.e., an increase of `r strsplit(con_eff, " ")[[1]][1]` on the probability scale). This is also displayed in the Figure \@ref(fig:plot-estimates-ath). Do note that the credible intervals for the estimates are quite wide for some countries where few people identify as atheists and deny an afterlife (e.g., India and Singapore). In general, the same pattern of results is observed for the atheist extinctivists as for the overall sample; the Bayes factor model comparison indicates most evidence for a varying positive effect of *state* (BF$_{+0} =$ `r printBFab(bfs1_ath[3],bfs1_ath[1])`; BF$_{+1} =$ `r printBFab(bfs1_ath[3],bfs1_ath[2])`) and of *context* (BF$_{+0} =$ `r printBFab(bfs3_ath[3],bfs3_ath[1])`; BF$_{+1} =$ `r printBFab(bfs3_ath[3],bfs3_ath[2])`). Again, there is no evidence that the religious context manipulation results in relatively stronger continuity judgments for mental states compared to physical states (i.e., state-by-context interaction; BF$_{01} =$ `r printBFab(bfs5_ath[1],bfs5_ath[2])`; BF$_{0+} =$ `r printBFab(bfs5_ath[1],bfs5_ath[3])`). 
+
+
+### Exploratory factor analysis
+
+```{r efa, include=FALSE, cache=TRUE}
+# exploratory factor analysis
+pca_dat <- mydata[,c("hunger","brains","hearing","love","desire","knowledge","country")]
+pa_outcome <- 1:100
+for(j in 1:100){
+  pa_outcome[j] <- psych::fa.parallel(pca_dat[,1:6], plot=F)$nfact 
+}
+fa_model <- psych::fa(pca_dat[,1:6], nfactors = round(median(pa_outcome)), cor = "tet")
+loadings <- fa_model$loadings
+fac1_all <- t(loadings[,1])
+fac2_all <- t(loadings[,2])
+
+pa_outcomes <- matrix(nrow = 100, ncol = length(countries))
+fac1 <- matrix(nrow = length(countries), ncol = 6)
+fac2 <- matrix(nrow = length(countries), ncol = 6)
+fac3 <- matrix(nrow = length(countries), ncol = 6)
+for(i in seq_along(countries)){
+  pca_dat_c <- subset(pca_dat, country==countries[i])
+  #pca_model <- logisticSVD(pca_dat_c[,1:6], k = 2)
+  
+  for(j in 1:100){
+    pa_outcomes[j, i] <- psych::fa.parallel(pca_dat_c[,1:6], plot = F)$nfact
+  }
+  
+  fa_model <- psych::fa(pca_dat_c[,c(1:6)], nfactors = round(median(pa_outcomes[,i])), cor = "tet")
+  loadings <- fa_model$loadings
+  fac1[i,] <- t(loadings[,1])
+  if(median(pa_outcomes[,i])>1) fac2[i,] <- t(loadings[,2])
+  if(median(pa_outcomes[,i])>2) fac3[i,] <- t(loadings[,3])
+  #heatmap(as.matrix(loadings),Colv = NA, Rowv = NA, scale="column")
+}
+
+# for country 11 switch factor 1 and 2
+fac1_11 <- fac1[11,]
+fac1[11,] <- fac2[11,]
+fac2[11,] <- fac1_11
+
+fac1 <- rbind(fac1,fac1_all)
+fac2 <- rbind(fac2,fac2_all)
+fac3 <- rbind(fac3,NA)
+colnames(fac3) <- colnames(fac1)
+```
+
+```{r, efa-plot, fig.width = 8, fig.height = 5, fig.align = 'center', fig.pos="H", fig.cap= "Factor loadings from EFAs per country. a. represents body-independent or mind-like factors, b. represents body-dependent or body-like factors and c. represents other factors. Factors were extracted using tetrachoric correlations."} 
+
+#par(mfrow = c(1, 3))
+par(omi=c(0.5,0.5,0,0.5), mar=c(2,3,1.5,0), font.main=1, las=1)
+
+p1 <- ~{
+  par(omi=c(0.5,0.5,0,0.5), mar=c(2,3,1.5,0), font.main=1, las=1)
+  image(t(fac1), axes=F, col = hcl.colors(12, "Light Grays", rev=TRUE), main = "F1 - body-independent")
+  axis(1, at = seq(0,1,by=.2), labels = c("hunger","brains","hearing","love","desire","knowledge"), las=2)
+  axis(2, at = seq(0,1,by=1/24), labels = c(countries,"Overall"), las = 1)
+}
+p2 <- ~{
+  par(omi=c(0.5,0.5,0,0.5), mar=c(2,3,1.5,0), font.main=1, las=1)
+  image(t(fac2), axes=F, col = hcl.colors(12, "Light Grays", rev=TRUE), main = "F2 - body-dependent")
+  axis(1, at = seq(0,1,by=.2), labels = c("hunger","brains","hearing","love","desire","knowledge"), las=2)
+  #axis(2, at = seq(0,1,by=1/23), labels = countries, las = 1)
+}
+p3 <- ~{
+  par(omi=c(0.5,0.5,0,0.5), mar=c(2,3,1.5,0), font.main=1, las=1)
+  image(t(fac3), axes=F, col = hcl.colors(12, "Light Grays", rev=TRUE), main = "F3 - other")
+  axis(1, at = seq(0,1,by=.2), labels = c("hunger","brains","hearing","love","desire","knowledge"), las=2)
+  #axis(2, at = seq(0,1,by=1/23), labels = countries, las = 1)
+}
+#cowplot::plot_grid(p1, p2, p3, nrow=1, labels = "auto")
+
+plot_efa = function(fct,plotTitle){
+  xlab         <- ""
+  ylab         <- ""
+  xLimits      <- c(1,6)
+  yLimits      <- c(1,25)
+  p <- fct %>% 
+  as.data.frame %>% 
+  pivot_longer(everything()) %>% 
+  mutate(country = rep(c(countries,"Overal"), each=6),
+         state = factor(name, levels = c("hunger","brains","hearing","love","desire","knowledge"))) %>%
+  mutate(country = factor(country, levels = c(countries,"Overal"))) %>%
+  ggplot(aes(y = country, x = state)) + 
+  geom_raster(aes(fill=value)) +
+  scale_y_discrete(limits=rev) + 
+  scale_fill_distiller(palette = "Greys", direction = 1, na.value = "white", guide = "none") +
+  ggtitle(plotTitle)
+  p <- p +
+    base_breaks_x(xLimits) +
+    base_breaks_y(yLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) + 
+    my_theme() +
+    theme(plot.title = element_text(size = 10),
+          #plot.title.position = "plot",
+          plot.margin = grid::unit(c(0.1, 0, 0, 0), "cm"),
+          axis.text.x = element_text(size = 8, angle = 45, hjust=1),
+          axis.text.y = element_text(size = 8))
+}
+
+p1 <- plot_efa(fac1, plotTitle = "a. F1-body-independent")
+p2 <- plot_efa(fac2, plotTitle = "b. F2-body-dependent")
+p3 <- plot_efa(fac3, plotTitle = "c. F3-other")
+
+plot_grid(p1,p2,p3, ncol=3)
+
+```
+### Additional Analyses
+
+We explored whether the data provide evidence for an interaction between religiosity and context, such that the religious framing effect on continuity judgments is enhanced for religious participants in particular. The Bayes factor model comparison provided most evidence for the unconstrained model: BF$_{u0}=$ `r printBFab(bfs7[4],bfs7[1])`. As shown in Figure \@ref(fig:plot-threeway)a, the unconstrained model is favored because in some countries (UK, Romania) the effect is positive, whereas in others it is negative (China). However, in only three countries (UK, Romania, China) do the credible intervals exclude zero. Overall, there is no evidence in favor of a religiosity-by-framing interaction effect assuming that the framing effect on continuity is larger for religious participants: BF$_{10}=$ `r printBFab(bfs7[2],bfs7[1])`; BF$_{01}=$ `r printBFab(bfs7[1],bfs7[2])` (this counts as basically no evidence either way).   
+
+Finally, we tested the evidence for a three-way interaction between state, religiosity and framing, such that mind-body dualism increases with religiosity, and particularly when framed in religious terms. The Bayes factor model comparison indicated some evidence in favor of a common three-way interaction: BF$_{10}=$ `r printBFab(bfs6[2],bfs6[1])`. 
+However, as shown in Figure \@ref(fig:descriptives-plot)b, it appears that compared to the secular framing, the religious framing slightly increases mind-body dualism for low religiosity in particular, but not for high religiosity. Based on the unclear pattern, the relatively small Bayes factor given the amount of data, and the fact that the three-way interaction only appears in 3 out of the 24 countries (see Figure \@ref(fig:plot-threeway)b), we do not consider this effect of relevance. 
+
+
+
+
+# Discussion
+
+```{r appendix, child='chapters/prior_sensitivity.Rmd'}
+```
+
+```{r dags, child='chapters/dags.Rmd'}
+```
+
+\newpage
+
+# References
+
+\begingroup
+\setlength{\parindent}{-0.5in}
+\setlength{\leftskip}{0.5in}
+
+<div id="refs" custom-style="Bibliography"></div>
+\endgroup
+
+

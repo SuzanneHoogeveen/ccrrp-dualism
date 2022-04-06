@@ -1,0 +1,145 @@
+---
+title: "Methods"
+output: html_document
+---
+
+```{r, desc-table}
+# format the sample and compensation columns 
+mydata$Sample[mydata$country %in% c("Italy","US")] <- "mixed"
+mydata$Compensation[mydata$country %in% c("Italy","US")] <- "none; money"
+mydata$Compensation[mydata$Compensation=="monetary reward"] <- "money"
+mydata$Compensation[mydata$Compensation=="course credit"] <- "credits"
+mydata$Compensation[mydata$Compensation=="no compensation + course credit"] <- "none; credits"
+mydata$Compensation[mydata$Compensation=="no compensation"] <- "none"
+
+descTab <- mydata %>% 
+  group_by(country) %>%
+  summarise(`N` = printnum(as.numeric(n()), big.mark=",",digits=0), 
+            `Age (SD)` = paste0(printnum(mean(Age, na.rm=T),digits=1)," (",printnum(sd(Age,na.rm=T),digits=1),")"),
+            `Women` = paste0(printnum(sum(Gender=="woman")/n()*100, digits=1),"%"), 
+            Religiosity = printnum(mean(religiosity), digits=2), 
+            Sample = unique(Sample), 
+            Compensation = unique(Compensation))
+
+total <- mydata %>%
+  summarise(country = "Total", 
+            `N` = printnum(as.numeric(n()), big.mark=",",digits=0),
+            `Age (SD)` = paste0(printnum(mean(Age, na.rm=T),digits=1)," (",printnum(sd(Age,na.rm=T),digits=1),")"),
+            `Women` = paste0(printnum(sum(Gender=="woman")/n()*100, digits=1),"%"), 
+            Religiosity = printnum(mean(religiosity), digits=2), 
+            Sample = "-", 
+            Compensation = "-")
+descTab <- rbind(descTab, total)
+colnames(descTab)[1] <- "Country"
+
+apa_table(descTab, 
+          align = c("l","c","c","c","c","l","l"),
+          caption = "Descriptive Statistics per Country", 
+          note = "Religiosity refers tot he self-reported level of individual religiosity based on 9 items, transformed on a 0-1 scale. Sample indicates the sample composition based on the method of recruitment per site.", 
+          font_size = "footnotesize")
+```
+
+```{r religions-table}
+religions <- mydata$R_denomination
+christian.other <- c("evangelic|protestant|christ|baptis|pentecostal|catolic|reform|luther|luter")
+muslim.other <- "islam|muslim|müslüman|مسلم"
+hindu.other <- "hindu"
+buddhist.other <- "buddhi"
+
+religion_groups <- case_when(religions == "Christian" ~ "Christian",
+                             religions == "Christian (Orthodox - Russian/Greek/etc.)" ~ "Christian",
+                             religions == "Christian (Protestant)" ~ "Christian", 
+                             religions == "Christian (Roman Catholic)" ~ "Christian",
+                             religions == "Evangelical" ~ "Christian",
+                             religions == "Muslim" ~ "Muslim",
+                             religions == "Muslim (Alevi)" ~ "Muslim", 
+                             religions == "Muslim (Azhari)" ~ "Muslim",
+                             religions == "Muslim (non-sectarian)" ~ "Muslim",
+                             religions == "Muslim (Sunni)" ~ "Muslim",
+                             religions == "Druze" ~ "Other", 
+                             religions == "Jain" ~ "Other", 
+                             religions == "Shinto" ~ "Other", 
+                             religions == "Spiritist" ~ "Other", 
+                             religions == "Taoist" ~ "Other",
+                             religions == "African religions" ~ "Other",
+                             religions == "Other:" ~ "Other", 
+                             is.na(religions) ~ "None",
+                             TRUE ~ religions)
+religion_groups <- ifelse(religion_groups=="Other"&grepl(christian.other, mydata$R_denominationText, ignore.case = T),"Christian",religion_groups)
+religion_groups <- ifelse(religion_groups=="Other"&grepl(muslim.other,    mydata$R_denominationText, ignore.case = T),"Muslim",   religion_groups)
+religion_groups <- ifelse(religion_groups=="Other"&grepl(hindu.other,     mydata$R_denominationText, ignore.case = T),"Hindu",    religion_groups)
+religion_groups <- ifelse(religion_groups=="Other"&grepl(buddhist.other,  mydata$R_denominationText, ignore.case = T),"Buddhist",religion_groups)
+mydata$religions <- religion_groups
+
+relTab <- mydata %>% 
+  group_by(country) %>%
+  summarise(Christian = paste0(printnum(sum(religions=="Christian")/n()*100, digits=1), "%"),
+            Muslim    = paste0(printnum(sum(religions=="Muslim")/n()*100, digits=1), "%"),
+            Hindu     = paste0(printnum(sum(religions=="Hindu")/n()*100, digits=1), "%"),
+            Buddhist  = paste0(printnum(sum(religions=="Buddhist")/n()*100, digits=1), "%"),
+            Jewish    = paste0(printnum(sum(religions=="Jewish")/n()*100, digits=1), "%"),
+            Other     = paste0(printnum(sum(religions=="Other")/n()*100, digits=1), "%"),
+            None      = paste0(printnum(sum(religions=="None")/n()*100, digits=1), "%"))
+total <- mydata %>%
+  summarise(country   = "Total", 
+            Christian = paste0(printnum(sum(religions=="Christian")/n()*100, digits=1), "%"),
+            Muslim    = paste0(printnum(sum(religions=="Muslim")/n()*100, digits=1), "%"),
+            Hindu     = paste0(printnum(sum(religions=="Hindu")/n()*100, digits=1), "%"),
+            Buddhist  = paste0(printnum(sum(religions=="Buddhist")/n()*100, digits=1), "%"),
+            Jewish    = paste0(printnum(sum(religions=="Jewish")/n()*100, digits=1), "%"),
+            Other     = paste0(printnum(sum(religions=="Other")/n()*100, digits=1), "%"),
+            None      = paste0(printnum(sum(religions=="None")/n()*100, digits=1),  "%"))
+relTab <- rbind(relTab, total)
+colnames(relTab)[1] <- "Country"
+
+apa_table(relTab, 
+          align = c("lccccccc"),
+          caption = "Religious Denomination per Country", 
+          col_spanners = list(`Religious group` = c(2:8)),
+          note = "Percentage of people indicating to be member of the respective religious groups. Note that the response options were particularized per country. Here we show the 5 most prevalent groups.")
+```
+
+## Participants
+In total, 10,535 participants completed the online experiment. Of these, 340 participants (3.23%) were excluded because they failed the attention check, leaving an analytic sample of $N=$ `r nrow(mydata)` from 24 countries (see Table \@ref(tab:desc-table) for descriptive statistics per country). Participants were recruited from university student samples, from personal networks, and from representative samples accessed by panel agencies and online platforms (MTurk, Kieskompas, Sojump, TurkPrime, Lancers, Qualtrics panels, Crowdpanel, and Prolific). Participants were compensated for participation by a financial remuneration, the possibility for a reward through a raffle, course credits, or no compensation. There were no a priori exclusion criteria; everyone over 18 years old could participate. Participants were forced to answer all multiple choice questions, hence there was no missing data. The countries were convenience-sampled (i.e., through personal networks), but were selected to cover all 6 continents and include different ethnic majorities and religious majorities (Christian, Muslim, Hindu, Jewish, Eastern religions, as well as highly secular societies). Table \@ref(tab:desc-table) displays the method of recruitment and compensation per country.
+
+__*Sampling Plan.*__ We preregistered a target sample size of $n= 400$ per country and 20-25 target countries.The preregistered sample size and composition allowed us to look at overall effects, effects within countries, and between countries. As we applied a Bayesian statistical framework, we needed a minimum of 20 countries to have sufficient data for accurate estimation in cross-country comparisons [@hox2012]. However, our main interest were overall effects - rather than effects for individual countries. With approximately 8,800 participants, we would have sufficient data to reliably estimate overall effects, especially since the dualism effect (state contrast) is within-subjects. As a stopping rule, we preregistered that data collection would be terminated (a) when the target of $n = 400$ per country was reached, or (b) by September 30th, 2019. However, due to unforeseen delays in construction of the materials and recruitment, this deadline was extended until November 30th, 2019.^[Ten participants completed the survey after this termination date, as the survey links were kept open (though no longer disseminated).] We did not download or inspect the data until after November 30th. Finally, we preregistered to only include countries where usable data from at least 300 participants were collected. However, we decided to keep the $n=$ `r nrow(mydata[mydata$country=="Lithuania",])` participants from Lithuania in the final sample, as the hierarchical models account for uncertainty in estimates from countries with smaller samples and removing these data will actually reduce the overall precision of the estimates. Moreover, it would simply be unfortunate to remove all data from an entire --highly understudied-- country. 
+
+```{r, reliability, cache=T}
+run_bayesrel <- F
+# reliability analysis 
+rel.items <- mydata[,c("R_afterlife","R_attendance","R_god","R_prayer","R_religiousID"
+                              ,"R_member","R_NormsSelfRelLife","R_NormsSelfGod")]
+
+# can only load this package on my mac, not on the server -_-
+if(run_bayesrel){
+  brel <- strel(rel.items, 
+      estimates = c("alpha","omega"),
+      item.dropped = T)
+  omega = brel$Bayes$est$Bayes_omega
+  omega.low = brel$Bayes$cred$low$Bayes_omega
+  omega.high = brel$Bayes$cred$up$Bayes_omega
+} else {
+  omega <- "0.930"
+  omega.low <- "0.927"
+  omega.high <- "0.931"
+}
+# item-rest correlations
+irestcor = min(psych::alpha(rel.items)$item.stats$r.drop)
+```
+
+## Material
+The study was part of a larger project on cross-cultural effects related to religiosity (see Appendix for details about the project). The relevant variables for the current study were individual religiosity, target state category (mental state vs. physical state), the manipulated context of the narrative and the binary continuity judgments for each state. Participant religiosity was measured using standardized items taken from the World Values Survey [WVS; @worldvaluessurvey2010], covering religious behaviours (institutionalized such as church attendance and private such as prayer/mediation), beliefs, identification, values, and denomination. Besides having high face-validity, these measures have been applied cross-culturally in other studies [@lindeman2015; @lun2013examining; @stavrova2015].  A Bayesian reliability analysis using the `Bayesrel` package [@bayesrelpackage] indicated good internal consistency of the religiosity measure, McDonald omega = `r omega` [`r omega.low`, `r omega.high`] (all item-rest correlations $>$ `r irestcor`). All individual religiosity items were transformed on a 0-1 scale (to make each item contribute equally to the scale), tallied to create a religiosity score per participant, and grand-mean standardized for the analyses.
+  The experimental stimuli consisted of a short narrative about a young person whose grandmother dies. The context was manipulated (between-subjects) by either introducing a priest (or other religious authority) or a doctor to mention the grandmother's death and stating that she is either *with God now* or *death now*, respectively. Participants then indicated whether they thought that the grandmother was still capable of (1) *being hungry*, (2) *hearing voices*, still had (3) *a functioning brain* , could still (4) *know things*, (5) *love*, and (6) *want things*. The first three processes were classified as physical states (psychobiological/perceptual) and the last three as mental states (cognitive). The narratives and process items were based on the materials used by @harris2005children. The name of the target person and the specific religious authority were adjusted to the language and cultural context of each country. 
+
+## Procedure
+Participants received a link to the Qualtrics survey, either by email, social media or through an online platform. After reading the instructions and providing informed consent, they first completed items for a separate study about religiosity and trustworthiness and religiosity and source credibility [see @hoogeveen2022einstein]. Subsequently, they were presented with the short narrative in either the religious or secular context, provided continuity judgments for the six process items, and completed the manipulation check to validate that they registered the type of authority (religious vs. medical). Finally, they provided demographics, a quality of life scale, the religiosity items, and were given the opportunity to provide comments. It took about 10 minutes to complete the entire survey (median completion time was $11.4$ minutes). 
+
+## Data analysis
+Analyses were carried out in R[^w]. <!--In our preregistration we specified that we would use the R package `brms` [@brmspackage], which is basically a Stan wrapper, to analyse the data and estimate model parameters. However, we eventually decided to build the models in Stan ourselves, as this allowed for more flexibility in the structure of the models and the setting of the priors. Especially this latter aspect is highly relevant in the context of Bayesian hypothesis testing and model comparison (more so than for pure estimation). -->
+The models were built using the package `brms`[@burkner2017brms], which relies on the Stan language [@carpenter2017stan]. The `bridgesampling` package [@gronau2020bridgesampling] was used to estimate the log marginal likelihood of the models of interest and calculate Bayes factors.   
+  The multilevel Bayesian modeling approach allows us to systematically evaluate the evidence in the data under different models: (i) across all countries the effect is truly null; (ii) all countries share a common nonzero effect; (iii) countries differ, but all effects are in the same (predicted) direction; and (iv) in some countries the effect is positive whereas in others the effect is negative [@haaf2017developing; @rouder2019beyond]. The models differ in the extent to which they constrain their predictions, from the most constrained (i) to completely unconstrained (iv). We refer to these models as the null model, the common effect model, the positive effects model, and the unconstrained model, respectively. Note that while the predictions from model (iii) are less constrained than those from model (ii), it is more difficult to obtain evidence for small effects under the latter model because it assumes that the effect is present in every country, rather than only in the aggregate sample. When applied to our hypothesis for the mental vs. physical state effect, evidence for (i) would indicate that people from these 24 countries do not differentially evaluate continuity of physical and mental states after death, evidence for (ii) would indicate that on average people from these 24 countries consider mental states more likely to continue than physical states (or vice versa), evidence for (iii) would indicate that in all of the 24 countries, people consider mental states more likely to continue than physical states (or vice versa), but there is cultural variation in the size of this effect, and evidence for (iv) would indicate that in some countries people consider mental states more likely to continue than physical states, and in other countries people consider physical states more likely to continue than mental states, indicating cultural variation in the direction (and size) of the effect.
+  For the full model including all main effects and relevant interaction effects, we specified the following unconstrained model. Let $Y$ denote the continuity responses per participant aggretaged over the three binary items per state, where 0 indicates discontinuity and 1 indicates continuity and $Y = 0, \dots, 3$. Further, let $Y_{ijkl}$ be the continuity judgment for the $i$th participant, $i = 1,\dots, N$, in the $j$th country, $j = 1,\dots, 24$, for the $k$th state category, $k = 1,2$ (physical or mental states, respectively), and the $l$th context condition, $l=1,2$ (secular or religious context, respectively). The responses $Y_{ijkl}$ are modeled using an aggregated binomail model with a logit link to transform probabilities into real numbers $\in(-\infty,\infty)$: 
+$$Y_{ijkl} \stackrel{ind} \sim \mbox{Binomial}(3, p_{ijkl}),$$ $$\textrm{logit}(p_{ijkl}) = \alpha_j + x_k \beta_j + u_i \delta_j + c_l \gamma_j + v_{ki} \theta_j + w_{kl} \zeta_j.$$
+where $\textrm{logit}(p_{ijkl})$ is the combined effect of observations, countries, and state categories on the tendency to indicate 'continues'. Note that $\textrm{logit}(p_{ijkl})=0$ reflects a probability of 0.5 of indicating continuity. The term $\alpha_j$ serves as the baseline continuity intercept for the $j$th country. The indicator $x_k = -0.5, 0.5$ if $k=1,2$, respectively, where $k=1$ indicates the physical state condition and $k=2$ indicates the mental state condition. The term $\beta_j$ is the $j$th country's main effect of state category on continuity judgments. The variable $u_i$ gives the $i$th participant's standardized religiosity score and $\delta_j$ is the $j$th country's main effect of religiosity. The indicator $c_l = -0.5, 0.5$ if $l=1,2$, respectively, where $l=1$ indicates the secular context condition and $l=2$ indicates the religious context condition. The term $\gamma_j$ is then the $j$th country's main effect of context. The indicator $v_{ki}$ gives the state-by-religiosity interaction term and $\theta_j$ is the corresponding interaction effect for the $j$th country. Finally, indicator $w_{kl}$ gives the state-by-context interaction term and $\zeta_j$ is the corresponding interaction effect for the $j$th country. 
+
+[^w]: For all analyses, we used `r my_citations`.

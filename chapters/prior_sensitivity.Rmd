@@ -1,0 +1,562 @@
+
+
+```{r setup-priors, include=FALSE}
+iterations <- 5500
+warmup <- 500
+chains <- 4
+```
+
+```{r previous-data, message=FALSE,warning=FALSE}
+source('analyse_previous_data.R')
+prevdat <- get_previous_data()
+prevdat$state_diff <- abs(prevdat$state_diff)
+```
+
+# Prior predictive checks 
+
+In order to systematically and thoroughly assess the adequacy of the priors, we should look at some settings for both the priors on the intercepts, the effects, the variability between countries and the correlation. We can use previous studies to inform our options. 
+
+We will consider the following: 
+
+- intercept:
+
+1. normal(0,1)
+2. normal(0,5)
+
+- effect:
+
+1. normal(0,5)
+2. normal(0,1)
+3. normal(0,0.5)
+
+- standard deviation between countries:
+
+1. exponential(1): as suggested by McElreath in Statistical Rethinking
+2. inverse-gamma(3,0.5): assuming a standard deviation below 0.5
+3. cauchy(0,2): as preregistered, no idea why...
+4. normal(0,1)
+5. student-t(3,0,2.5): brms default
+
+- correlation matrix:
+
+1. lkj(1): flat distribution for the correlation matrix
+2. lkj(2): putting slightly less mass on extreme correlation values (i.e., -1 and 1)
+
+## What do we know? 
+Based on data from previous studies that have been conducted across different cultures, we can get an idea of the expected intercepts and size of the effects. The mean state effect --the difference in the probability of continuity responses for mental vs. bodily states-- across these `r nrow(prevdat)` sites, taken from 4 previous studies is `r round(mean(prevdat$state_diff),3)`, so `r round(mean(prevdat$state_diff),3)*100`% with a standard deviation of `r round(sd(prevdat$state_diff),3)` (`r round(sd(prevdat$state_diff),3)*100`%). For the `r length(na.omit(prevdat$context_diff))` context effects in the previous studies, the mean difference between a theistic/spiritual prime and the neutral/control condition is `r round(mean(prevdat$context_diff, na.rm=T),3)` (`r round(mean(prevdat$context_diff, na.rm=T),3)*100`%) with a standard deviation of `r round(sd(prevdat$context_diff, na.rm=T),3)` (`r round(sd(prevdat$context_diff, na.rm=T),3)*100`%).
+Based on these data, we would expect experimental effects of about 10-20% and a standard deviation between studies/countries of about 15-20%. 
+
+## What do we want? 
+In the simulation, we draw samples from the prior distributions and look whether the distributions of the country-level intercept (i.e., the overall probability of saying that a given state will continue) and the predictions on the country-level experimental state effect (i.e., difference in probability of saying 'continues' between mental and physical states) make sense. If priors are too vague the distributions become bimodal, suggesting that all participants in a given country either judge all states to cease or continue. We aim to find prior distributions that are relatively uninformative while still allowing making sensible predictions.
+
+## What do we conclude? 
+We found that the LKJ settings do not have a strong influence on the chosen parameters. We therefore show only the LKJ(2) parameter case, as we think correlations between country-level effects of -1 or 1 are less likely than more modest correlation values a priori. 
+
+First, the normal(0,5) prior on the intercept translates into extreme predictions on the probability scale, resulting in a unrealistic bimodal distribution with most mass close to 0 and 1. The normal distribution with standard deviation 1, on the other hand, seems to make reasonable predictions about the overall probability of continuity, allowing for all values between 0 and 1 with most mass around 0.5. Second, based on visual inspection, is seems both the exponential(1) and the half-normal(0,1) prior for the between-country variation make sensible predictions. The inverse-gamma(3,0.5) seems a bit too strict and the preregistered cauchy(0,2) and the brms-default student-t(3,0,2.5) are too wide to translate into reasonable predictions on the probability scale. Finally, a normal distribution with a standard deviation of 1 seems to make the best predictions for the experimental state effect, putting most mass on smaller differences, but still allowing for effects up to 75% (as observed in one previous study). Based on these prior predictions, we decided to use the normal(0,1) prior for the intercept and the effect, the half-normal(0,1) for the variation between countries, and the LKJ(2) for the correlation matrix. 
+
+```{r visualize-priors, fig.cap="Different prior settings for the between-country variation in the effects of interest.", warning=FALSE}
+color_chosen  <- '#7FC97F'
+color_prereg  <- '#D95F02B3' 
+color_default <- '#BEAED4'
+  
+.densityPlot <- function(density, options) {
+  
+  # Define custom y axis function
+  base_breaks_y <- function(yLimits) {
+    d <- data.frame(x=-Inf, xend=-Inf, y=yLimits[1], yend=yLimits[2])
+    list(ggplot2::geom_segment(data=d, ggplot2::aes(x=x, y=y, xend=xend, yend=yend), size = 0.75, inherit.aes=FALSE))
+  }
+  base_breaks_x <- function(xLimits) {
+    d <- data.frame(x=xLimits[1], xend=xLimits[2], y=-Inf, yend=-Inf)
+    list(ggplot2::geom_segment(data=d, ggplot2::aes(x=x, y=y, xend=xend, yend=yend), size = 0.75, inherit.aes=FALSE))
+  }
+  
+  xlab         <- options$xaxislabel
+  ylab         <- options$yaxislabel
+  yLimits      <- options$yLimits
+  xLimits      <- options$xLimits
+  xLimitBreaks <- options$xLimitBreaks
+  xLimitLabels <- options$xLimitLabels
+  color        <- options$color
+  
+   if(density == 'lkj') {
+     
+     xLimits <- c(-1, 1)
+    
+    eta  <- options$eta
+    xlab <- paste0('LKJ(', eta, ')')
+    prior_name  <- paste0('LKJ(', eta, ')')
+    
+   p <- data.frame(Prior = ' ') %>%
+      ggdist::parse_dist(prior_name) %>%
+      ggdist::marginalize_lkjcorr(K = 2) %>%
+      ggplot2::ggplot(aes(y = Prior, dist = .dist, args = .args)) +
+      stat_dist_halfeye(
+        limits = c(xLimits[1], xLimits[2]),
+        slab_color = 'black',
+        slab_fill = color,
+        show_interval = FALSE, 
+        slab_size = 0.5
+      ) + 
+     coord_cartesian(ylim = c(0.95,2), 
+                     xlim = c(xLimits[1]-0.1,xLimits[2]+0.1), 
+                     expand=FALSE)
+    
+  } else {
+    
+    if(density == 'inv_gamma'){
+      
+      if(is.null(options$xLimits))  xLimits <- c(0, 5)
+      
+      shape <- options$shape
+      scale <- options$scale
+      
+      p <- ggplot2::ggplot(data.frame(x = xLimits), aes(x = x)) + 
+        stat_function(fun = MCMCpack::dinvgamma, args = list(shape = shape, scale = scale), 
+                      geom = "area", fill = color) + 
+        stat_function(fun = MCMCpack::dinvgamma, args = list(shape = shape, scale = scale), size = 0.5)
+      
+    } else if(density == 'normal') {
+      
+      if(is.null(options$xLimits))  xLimits <- c(0, 5)
+      
+      mean <- options$mean
+      sd   <- options$sd
+      
+      p <- ggplot2::ggplot(data.frame(x = xLimits), aes(x = x)) +
+        stat_function(fun = dnorm, args = list(mean = mean, sd = sd), geom = "area", fill = color) + 
+        stat_function(fun = dnorm, args = list(mean = mean, sd = sd), size = 0.5)
+      
+    } else if(density == 'cauchy') {
+      
+      if(is.null(options$xLimits))  xLimits <- c(0, 5)
+      
+      location <- options$location
+      scale    <- options$scale
+      
+      p <- ggplot2::ggplot(data.frame(x = xLimits), aes(x = x)) +
+        stat_function(fun = dcauchy, args = list(location = location, scale = scale), 
+                      geom = "area", fill = color) + 
+        stat_function(fun = dcauchy, args = list(location = location, scale = scale), size = 0.5)
+
+    } else if(density == 'exponential') {
+      
+      if(is.null(options$xLimits))  xLimits <- c(0, 5)
+      
+      rate <- options$rate
+      
+      p <- ggplot2::ggplot(data.frame(x = xLimits), aes(x = x)) +
+        stat_function(fun = dexp, args = list(rate = rate), 
+                      geom = "area", fill = color) + 
+        stat_function(fun = dexp, args = list(rate = rate), size = 0.5)
+
+    } else if(density == 'student_t') {
+      
+      if(is.null(options$xLimits))  xLimits <- c(0, 5)
+      
+      df    <- options$df
+      mu    <- options$mu
+      sigma <- options$sigma
+      
+      p <- ggplot2::ggplot(data.frame(x = xLimits), aes(x = x)) +
+        stat_function(fun = ggdist::dstudent_t, args = list(df = df, mu = mu, sigma = sigma), 
+                      geom = "area", fill = color) + 
+        stat_function(fun = ggdist::dstudent_t, args = list(df = df, mu = mu, sigma = sigma), 
+                      size = 0.5)
+      
+    }
+  }
+  
+  if(!is.null(xLimitLabels) & !is.null(xLimitBreaks)){
+    
+    p <- p + ggplot2::scale_x_continuous(labels=xLimitLabels, breaks = xLimitBreaks) 
+    
+  } else {
+    p <- p + ggplot2::scale_x_continuous() 
+  }
+  
+  ### Theming & Cleaning
+  p <- p +
+    base_breaks_x(xLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      panel.grid.minor=   ggplot2::element_blank(),
+      plot.title=         ggplot2::element_text(size = 15),
+      panel.grid.major=   ggplot2::element_blank(),
+      axis.title.x=       ggplot2::element_text(size = 12),
+      axis.title.y=       ggplot2::element_text(size = 15),
+      axis.text.x=        ggplot2::element_text(size = 12),
+      axis.text.y=        ggplot2::element_blank(),
+      panel.background=   ggplot2::element_rect(fill = "transparent", colour = NA),
+      plot.background=    ggplot2::element_rect(fill = "transparent", colour = NA),
+      panel.border=       ggplot2::element_blank(),
+      axis.line=          ggplot2::element_blank(),
+      axis.ticks.y=       ggplot2::element_blank(),
+      axis.ticks.x=       ggplot2::element_line(size = 0.5),
+      axis.ticks.length=  grid::unit(3, "mm"),
+      plot.margin=        grid::unit(c(0.1, 0.1, 0.6, 0.6), "cm")
+    ) 
+  
+  return(p)
+}
+
+options <- list(
+  mean       = 0,
+  mu         = 0,
+  location   = 0,
+  yaxislabel = '',
+  color      = 'lightgray'
+)
+
+# Standard deviations: half-normal(0,1)
+    options$xaxislabel <-  'Half-Normal(0,1)'
+    options$sd         <- 1
+    options$xLimits    <- NULL
+    p_halfnormal       <- .densityPlot(density='normal', options)
+# Standard deviations: exponential(1)
+    options$xaxislabel <-  'Exponential(1)'
+    options$rate       <- 1
+    p_exponential      <- .densityPlot(density='exponential', options)
+# Standard deviations: half-student-t
+    options$xaxislabel <- 'half-Student-t(3,0,2.5)'
+    options$df         <- 3
+    options$sigma      <- 2.5
+    p_student_t        <- .densityPlot(density='student_t', options)
+# Standard deviations: inverse gamma 
+    options$xaxislabel <- 'Inverse-gamma(3,0.5)'
+    options$shape      <- 3
+    options$scale      <- 0.5
+    p_inv_gamma        <- .densityPlot(density='inv_gamma', options)
+# Standard deviations: cauchy 
+    options$xaxislabel <- 'Cauchy(0,2)'
+    options$scale      <- 2
+    p_cauchy           <- .densityPlot(density='cauchy', options)
+
+  prior_grid   <- cowplot::plot_grid(p_halfnormal, p_exponential, p_student_t, 
+                                     p_inv_gamma, p_cauchy,
+                                     nrow = 2, labels=paste0(LETTERS[1:5], '.'), 
+                                     label_size = 12)
+prior_grid
+```
+
+
+```{r priors-chosen, fig.cap="Chosen prior settings for the main analysis. A. shows the prior on the intercept and the effect, B. shows the prior on the variability between countries, and C. shows the prior on the correlation matrix."}
+options <- list(
+  mean       = 0,
+  mu         = 0, 
+  yaxislabel = '',
+  color      = color_chosen
+)
+
+#parameters
+  # Intercept / effect: normal(0,1)
+    options$sd         <- 1
+    options$xaxislabel <- 'Normal(0,1)'
+    options$xLimits    <- c(-5,5)
+    p_normal           <- .densityPlot(density = 'normal', options)
+  # LKJ correlations: LKJ(2)
+    options$eta        <- 2
+    options$xaxislabel <- ''
+    lkj                <- .densityPlot(density='lkj', options)
+  # Standard deviations: half-normal(0,1)
+    options$xaxislabel <-  'half-normal(0,1)'
+    options$xLimits    <- NULL
+    p_halfnormal       <- .densityPlot(density='normal', options)
+  # Standard deviations: exponential(1)
+    options$xaxislabel <-  'Exponential(1)'
+    options$rate       <- 1
+    p_exponential      <- .densityPlot(density='exponential', options)
+  prior_grid   <- cowplot::plot_grid(p_normal, p_halfnormal, lkj,
+                                      #p_exponential,
+                                     nrow = 2, labels=paste0(LETTERS[1:3], '.'), 
+                                     label_size = 14)
+  
+  prior_grid
+```
+
+
+```{r test-models, eval=FALSE}
+grid <- expand.grid(
+  int <- c("normal(0,5)","normal(0,1)"),
+  b = c("normal(0,5)","normal(0,1)","normal(0,0.5)"),
+  sd = c("exponential(1)","inv_gamma(3,0.5)","cauchy(0,2)","normal(0,1)"),
+  eta = c("lkj(1)","lkj(2)"), stringsAsFactors = FALSE
+)
+# add brms defaults (approximation)
+grid <- rbind(grid, c("student_t(3,0,2.5)","normal(0,1000)","student_t(3,0,2.5)","lkj(1)"))
+grid <- rbind(grid, c("normal(0,10)","normal(0,1)","cauchy(0,2)","lkj(1)"))
+
+prior_predictions <- function(grid){
+  alpha <- vector("list", nrow(grid))
+  beta <- vector("list", nrow(grid))
+  for(i in 1:nrow(grid)){
+    m <- brm(data=dat, family = binomial,
+                  resp | trials(3) ~ 1 + cat + (1 + cat | site),
+                  c(prior_string(grid[i,1], class="Intercept"),
+                    prior_string(grid[i,2], class="b"),
+                    prior_string(grid[i,3], class="sd"),
+                    prior_string(grid[i,4], class="cor")),
+                  iter = iterations, warmup = 500, chains = 4, cores = 4,
+                  seed = 2022, backend = "cmdstanr", sample_prior = "only")
+    nd1 <- data.frame(cat = 0)
+    nd2 <- data.frame(cat = c(-1/2,1/2))
+    f <- fitted(m, 
+                newdata = nd1,
+                summary = FALSE,
+                allow_new_levels = TRUE,
+                sample_new_levels = "gaussian")
+    alpha[[i]] <- f/3
+    f <- fitted(m, 
+                newdata = nd2,
+                summary = FALSE,
+                allow_new_levels = TRUE,
+                sample_new_levels = "gaussian")
+    beta[[i]] <- abs(f[,1]-f[,2])/3
+  }
+  return(list(alpha=alpha, beta=beta))
+}
+
+prior_preds <- prior_predictions(grid)
+
+saveRDS(prior_preds, file = "models/saved_models/prior_samples.rds")
+
+
+```
+
+```{r plot-priors-all, fig.cap=c("","","","","","","","Prior predictive distributions under all considered prior settings on the intercept, effect, and between-country variation. The top rows display prior predictions for the overall probability of continuity (i.e., the intercept) and the bottom rows display prior predictions for the difference between experimental conditions (i.e., mental vs. bodily states or religious vs. secular context)."), results='asis'}
+
+prior_preds <- readRDS("models/saved_models/prior_samples.rds")
+
+grid <- expand.grid(
+  int <- c("normal(0,5)","normal(0,1)"),
+  b = c("normal(0,5)","normal(0,1)","normal(0,0.5)"),
+  sd = c("exponential(1)","inv_gamma(3,0.5)","cauchy(0,2)","normal(0,1)"),
+  eta = c("lkj(1)","lkj(2)"), stringsAsFactors = FALSE
+)
+# add brms defaults (approximation)
+grid <- rbind(grid, c("student_t(3,0,2.5)","normal(0,1000)","student_t(3,0,2.5)","lkj(1)"))
+grid <- rbind(grid, c("normal(0,10)","normal(0,1)","cauchy(0,2)","lkj(1)"))
+
+
+.samplesPlot <- function(samples, options, variable, var_prevdat){
+  
+  # Define custom y axis function
+  base_breaks_y <- function(yLimits) {
+    d <- data.frame(x=-Inf, xend=-Inf, y=yLimits[1], yend=yLimits[2])
+    list(ggplot2::geom_segment(data=d, ggplot2::aes(x=x, y=y, xend=xend, yend=yend), size = 0.75, inherit.aes=FALSE))
+  }
+  base_breaks_x <- function(xLimits) {
+    d <- data.frame(x=xLimits[1], xend=xLimits[2], y=-Inf, yend=-Inf)
+    list(ggplot2::geom_segment(data=d, ggplot2::aes(x=x, y=y, xend=xend, yend=yend), size = 0.75, inherit.aes=FALSE))
+  }
+  
+  plotTitle    <- options$title
+  xlab         <- options$xaxislabel
+  ylab         <- options$yaxislabel
+  yLimits      <- options$yLimits
+  xLimits      <- options$xLimits
+  xLimitBreaks <- options$xLimitBreaks
+  xLimitLabels <- options$xLimitLabels
+  color        <- options$color
+  xaxisSize    <- options$xaxisSize
+  
+  p <- samples %>%
+    ggplot2::ggplot( aes(x=.data[[variable]])) +
+    ggplot2::geom_density(fill=color) + 
+    ggplot2::ggtitle(plotTitle)
+  
+  # add estimates from previous studies 
+  p <- p + ggplot2::geom_point(data=prevdat, aes_string(x=var_prevdat, y=0), 
+                               shape = 16, size = 3, alpha=0.5)
+  
+  if(!is.null(xLimitLabels) & !is.null(xLimitBreaks)){
+    
+    p <- p + ggplot2::scale_x_continuous(labels=xLimitLabels, breaks = xLimitBreaks) 
+    
+  } else {
+    p <- p + ggplot2::scale_x_continuous() 
+  }
+  
+  ### Theming & Cleaning
+  p <- p +
+    base_breaks_x(xLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      panel.grid.minor=   ggplot2::element_blank(),
+      plot.title=         ggplot2::element_text(size = 9), #10
+      panel.grid.major=   ggplot2::element_blank(),
+      axis.title.x=       ggplot2::element_text(size = 9),
+      axis.title.y=       ggplot2::element_text(size = 14),
+      axis.text.x=        ggplot2::element_text(size = 9), #12
+      axis.text.y=        ggplot2::element_blank(),
+      panel.background=   ggplot2::element_rect(fill = "transparent", colour = NA),
+      plot.background=    ggplot2::element_rect(fill = "transparent", colour = NA),
+      panel.border=       ggplot2::element_blank(),
+      axis.line=          ggplot2::element_blank(),
+      axis.ticks.y=       ggplot2::element_blank(),
+      axis.ticks.x=       ggplot2::element_line(size = 0.5),
+      axis.ticks.length=  grid::unit(3, "mm"),
+      plot.margin=        grid::unit(c(0.1, 0.1, 0.6, 0.6), "cm")
+    ) 
+  
+  return(p)
+}
+
+options        <- list(yaxislabel   = '', 
+                       xLimits      = c(0, 1),
+                       xLimitBreaks = c(0, 0.5, 1),
+                       xLimitLabels = c('0', '.5', '1'))
+
+sim_alpha <- vector("list", nrow(grid))
+sim_beta <- vector("list", nrow(grid))
+
+grid[,1] <- stringr::str_replace(grid[,1],"normal","N")
+grid[,1] <- stringr::str_replace(grid[,1],"student_t","t")
+grid[,2] <- stringr::str_replace(grid[,2],"normal","N")
+grid[,3] <- stringr::str_replace(grid[,3],"normal","N+")
+grid[,3] <- stringr::str_replace(grid[,3],"exponential","Exp")
+grid[,3] <- stringr::str_replace(grid[,3],"inv_gamma","IG")
+grid[,3] <- stringr::str_replace(grid[,3],"cauchy","C+")
+grid[,3] <- stringr::str_replace(grid[,3],"student_t","t")
+grid[,4] <- stringr::str_replace(grid[,4],"lkj","LKJ")
+
+
+
+
+
+
+for(i in 1:nrow(grid)){
+  plotTitle <- paste(paste(grid[i,1:2], collapse = " "), 
+                     paste(grid[i,3:4], collapse = " "), sep = "\n")
+  options$title <- plotTitle
+  samples <- data.frame(alpha = prior_preds$alpha[[i]], 
+                        beta = prior_preds$beta[[i]])
+  if( grid[i,1] == "N(0,1)" & grid[i,2] == "N(0,1)" & grid[i,3] == "N+(0,1)" & grid[i,4] == "LKJ(2)" ){
+    options$color <- color_chosen
+  } else if( grid[i,2] == "N(0,1000)") {
+    options$color <- color_default
+  } else if( grid[i,1] == "N(0,10)") {
+    options$color <- color_prereg 
+  } else {
+    options$color <- 'lightgrey'
+  }
+  options$xaxislabels <- "P('continues')"
+    sim_alpha[[i]]   <- .samplesPlot(samples, options, 
+                                     variable='alpha',
+                                     var_prevdat = "p_continues")
+  options$xaxislabels <- "diff mind vs. body"
+    sim_beta[[i]] <- .samplesPlot(samples, options, 
+                                  variable = 'beta',
+                                  var_prevdat = "state_diff")
+}
+
+plot_sequence <- split(25:48, ceiling(seq_along(1:24)/6)) # only show LKJ(2)
+plot_sequence <- split(25:50, ceiling(seq_along(1:26)/8)) # only show LKJ(2)
+
+
+for(i in 1:length(plot_sequence)){
+  print(cowplot::plot_grid(plotlist = sim_alpha[plot_sequence[[i]]], nrow=2, ncol = 4)) #nrow=2,ncol=3
+}
+for(i in 1:length(plot_sequence)){
+  print(cowplot::plot_grid(plotlist = sim_beta[plot_sequence[[i]]], nrow=2, ncol = 4))
+}
+
+```
+
+```{r compare-priors, fig.asp=1.2, fig.cap="Prior predictions for the chosen prior settings (in green), the brms default settings (in purple), and the preregistered settings (in orange). "}
+comparison_plots <- c(sim_alpha[46],sim_beta[46], sim_alpha[49], sim_beta[49], sim_alpha[50], sim_beta[50])
+print(cowplot::plot_grid(plotlist = comparison_plots, nrow = 3))
+```
+
+As becomes evident in Figure \@ref(fig:compare-priors), predictions from both our preregistered prior settings and the brms default settings are completely unrealistic; both predict that all responses with be either complete cessation or continuity. The brms default priors are much too wide, resulting in predicting an unlikely difference of 100% between conditions. The preregistered priors, on the other hand, predict a modest effect, but due to the wide prior on the variation between countries, this results in a very strong prediction of observing no effect. However, note that in this case, because we have so much data, the data will always outweigh the priors, resulting in a reasonable posterior distribution, regardless of the exact prior specifications (see robustness checks). 
+
+# MCMC Diagnostics 
+
+```{r mcmc-diagnostics, warning=F, message=F, fig.width=7, fig.asp=.7, fig.cap="MCMC diagnostics. a. Chains for parameters with the smallest (correlation between the slope for the state effect and the state-by-context interaction effect) and b. largest (individual level religiosity effect) rhat values. c. Ratio of the number of effective samples versus the total samples for each parameter in the full model."}
+rhats <- brms::rhat(b5u_norm)
+rhat_min <- min(rhats, na.rm = T) #correlation between slope for state effect and state-by-context interaction
+rhat_max <- max(rhats, na.rm = T) #individual level religiosity effect 
+
+ratios <- neff_ratio(b5u_norm)
+ess <- bayestestR::effective_sample(b5u_norm, effects = "all")
+ess_min <- min(ess$ESS) #intercept 
+
+plot_trace = function(model,options,param){
+  xLimits = options$xLimits
+  yLimits = options$yLimits
+  yLimitBreaks = options$yLimitBreaks
+  xlab = options$xaxislabel
+  ylab = options$yaxislabel
+  plotTitle = options$title
+  colors = options$colors
+  p <- bayesplot::mcmc_trace(model, pars = param) +
+    scale_y_continuous(breaks = yLimitBreaks) +
+    scale_color_manual(guide="none", values = colors)
+  p <- p +
+    base_breaks_x(xLimits) +
+    base_breaks_y(yLimits) +
+    ggplot2::xlab(xlab) +
+    ggplot2::ylab(ylab) + 
+    ggtitle(plotTitle) + 
+    my_theme() +
+    theme(plot.title = element_text(size = 10),
+          #plot.title.position = "plot",
+          #plot.margin = grid::unit(c(0.1, 0, 0, 0), "cm"),
+          axis.text.x = element_text(size = 9),
+          axis.text.y = element_text(size = 9), 
+          axis.title.x = element_text(size = 10),
+          axis.title.y = element_text(size = 10))
+}
+
+options = list(
+  xLimits = c(0,5000),
+  yLimits = c(-1,1),
+  yLimitBreaks = seq(-1,1,by=0.5),
+  xaxislabel = "Iteration",
+  yaxislabel = "cor state state-by-context",
+  title = substitute(paste("a. Smallest ", hat(R), " (= ",val, ")"), list(val=round(rhat_min,4))),
+  colors = RColorBrewer::brewer.pal(n = 9, name = "Greens")[c(2,4,6,8)]
+    #rev(c('#99B898','#2A363B','#FF847C','#96281B'))
+)
+
+p1 <- plot_trace(b5u_norm, options = options, param = "cor_site__cat__cat:con")
+options$yLimits = c(0.5,1.1)
+options$yLimitBreaks = seq(0.5,1.1,by=0.2)
+options$yaxislabel = "religiosity"
+options$title = substitute(paste("b. Largest ", hat(R), " (= ",val, ")"), list(val=round(rhat_max,4)))
+p2 <- plot_trace(b5u_norm, options = options, param = "b_rel")
+
+colors = RColorBrewer::brewer.pal(n = 9, name = "Greens")[c(4,6,8,9)]
+p3 <- 
+  bayesplot::mcmc_neff_hist(ratios, binwidth = .02) +
+  scale_fill_manual(values = colors[c(2,3)], name = "", labels = c(expression(hat(N) [eff]/ "N" >= 0.1), expression(hat(N) [eff]/ "N" >= 0.5))) +
+  scale_color_manual(values = colors[c(3,4)], name = "", labels = c(expression(hat(N) [eff]/ "N" >= 0.1), expression(hat(N) [eff]/ "N" >= 0.5))) +
+  scale_y_continuous(breaks = seq(0,40,by=10)) +
+  base_breaks_x(c(0,2)) +
+  base_breaks_y(c(0,40)) +
+  ggplot2::ylab("Frequency") + 
+  ggtitle("c. Effective Sample Size / Total Sample Size") + 
+  my_theme() +
+    theme(plot.title = element_text(size = 10),
+          legend.position = "right",
+          axis.text.x = element_text(size = 9),
+          axis.text.y = element_text(size = 9), 
+          axis.title.x = element_text(size= 10),
+          axis.title.y = element_text(size = 10),
+          legend.text = element_text(size = 10))
+  
+toprow = plot_grid(p1,p2, ncol = 2)
+plot_grid(toprow, p3, nrow = 2)
+
+```
+
+To investigate convergence of the MCMC chains, we extracted the $\hat{R}$ values for all model parameters. The smallest and largest $\hat{R}$ values were `r rhat_min` for the correlation between the slope of the state effect and the state-by-context effect and `r rhat_max` for the individual level religiosity effect, respectively. The traceplots for these smallest and largest $\hat{R}$ values are shown in Figure \@ref(fig:mcmc-diagnostics)a and b.
+
+The ratio of effective samples versus total samples $\hat{N}_{\text{eff}}/N$ was calculated per parameter to assess to what extent autocorrelation in the chains reduces the certainty of the posterior estimates [@geyer2011introduction]. Ideally, $\hat{N}_{\text{eff}}$ is as large as possible [@vehtari2021ranknormalization]. The $\hat{N}_{\text{eff}}/N$ for each of the `r nrow(ess)` estimated parameters is displayed in Figure \@ref(fig:mcmc-diagnostics)c. Note that $\hat{N}_{\text{eff}}$ can be larger than the the total number of iterations (in this case: $N=$ `r (iterations-warmup)*chains`) when the samples are anti-correlated or antithetical [@carpenter2018we]. The smallest $\hat{N}_{\text{eff}}$ = `r ess_min` for the overall intercept. For many parameters, $\hat{N}_{\text{eff}}$ is at least half of the number of iterations, although for some parameters the ratio is rather low, indicating that there is some autocorrelation in the chains. Nevertheless, since brms uses the NUTS sampler [@hoffman2014nouturn], even for complex models 'a few thousand' samples generally suffice for stable results [@burkner2017brms]. We therefore concluded that the effective sample size is sufficient for valid interpretation of the estimates and inference.  
+
+
+
